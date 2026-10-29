@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Harlgram native Telegram client"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Harlgram"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Harlgram"
+    }
+  ]
+}

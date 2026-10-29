@@ -1,0 +1,11 @@
+{
+  "app": {
+    "bundleName": "xyz.3333189.harlgram",
+    "vendor": "example",
+    "versionCode": 1000000,
+    "versionName": "1.0.0",
+    "buildVersion": "1",
+    "icon": "$media:harlgram_icon",
+    "label": "$string:app_name"
+  }
+}
