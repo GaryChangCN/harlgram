@@ -3,7 +3,7 @@ const english = {
   'skip': 'Skip to content', 'navigation': 'Main navigation',
   'nav.features': 'Features', 'nav.progress': 'Progress', 'nav.develop': 'Build',
   'hero.title1': 'Telegram.', 'hero.title2': 'Native to HarmonyOS.',
-  'hero.description': 'An independent Telegram client built for HarmonyOS NEXT. Familiar conversations in native ArkUI, connected to Telegram through TDLib.',
+  'hero.description': 'An open-source native third-party Telegram client for HarmonyOS NEXT. Familiar conversations in ArkUI, connected to Telegram through TDLib.',
   'hero.source': 'View source', 'hero.build': 'Build it yourself',
   'hero.note': 'In active development · Phone experience first',
   'hero.screenshot': 'Harlgram single-column device capture, privacy-redacted and composited into an illustrative Pura X Max frame',
@@ -80,10 +80,10 @@ for (const element of translatable) {
 }
 
 let language = 'zh';
-const titles = { zh: 'Harlgram — Telegram，以鸿蒙的方式。', en: 'Harlgram — Telegram. Native to HarmonyOS.' };
+const titles = { zh: 'Harlgram｜鸿蒙 HarmonyOS NEXT 原生 Telegram 客户端', en: 'Harlgram | Native Telegram Client for HarmonyOS NEXT' };
 const descriptions = {
-  zh: 'Harlgram：面向 HarmonyOS NEXT 的开源原生 Telegram 第三方客户端。ArkUI、TDLib，以及可接力的 AI-native 开发工作流。',
-  en: 'Harlgram: an open-source, native third-party Telegram client for HarmonyOS NEXT. Built with ArkUI, TDLib, and an AI-native development workflow.'
+  zh: 'Harlgram 是开源的鸿蒙 HarmonyOS NEXT 原生 Telegram 第三方客户端，基于 ArkUI + TDLib，持续开发中。查看功能进度、界面预览和源码构建指南。',
+  en: 'Harlgram is an open-source native third-party Telegram client for HarmonyOS NEXT, built with ArkUI + TDLib and in active development. Explore features, previews, and source build guides.'
 };
 
 function setLanguage(next) {
