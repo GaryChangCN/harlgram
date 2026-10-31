@@ -102,3 +102,19 @@ DevEco 签名、Telegram 应用 API 配置、Telegram 用户登录是三类独�
 私有源配置为 `config/telegram.local.json`，公开模板为 `config/telegram.example.json`；`scripts/configure-telegram.sh` 生成 `entry/src/main/ets/config/TelegramBuildConfig.ets`，供 `startDefault` 读取。私有源文件与生成文件均在 `.gitignore` 中。项目不内置上游应用或示例 API 凭据。
 
 无配置可以构建界面和启动验证版本，但不能进行手机号鉴权。正式构建需验证开发者自有 API 配置，release guard 应在构建阶段阻止缺失或无效配置进入产物。安全存储与混淆不能把随客户端分发的 API Hash 变成服务器端秘密；不得把用户登录密码放入这类配置。
+
+## 媒体边界
+
+`MediaModels.ts` 只处理附件模型与字符串相册 ID；协议层归并照片/视频、请求发送/下载，不能用本地预览代替发送确认。`AttachmentService.ets` 限定系统 Picker 授权 URI、受控缓存复制、元数据和系统确认保存。`MediaViewer` 负责媒体切换，`PhotoViewer` 保留缩放，`VideoPlayer` 独占 AVPlayer 与文件句柄并在退出时释放；`EntryAbility` 发布前后台状态。全屏媒体临时使用深色系统栏，退出恢复外观偏好；不修改用户的浅色/深色/跟随系统选项。实现范围和真实验收见 [MEDIA.md](MEDIA.md)。
+
+## 消息呈现
+
+富内容由 `telegram/RichMessage.ts` 按固定 schema 解码，输出显式的 `RichContentBlock`；`MessagePresentation.ts` 提供格式/分组/几何纯逻辑，`MessageText.ets` 使用原生 Span 呈现。普通与嵌入媒体共享下载状态更新；嵌入媒体下载必须核实源消息中的文件归属。全文和回复只读请求单独关联，不伪造新消息插入历史。入口、证据和边界见 [MESSAGE_DISPLAY.md](MESSAGE_DISPLAY.md)。
+
+## 存储与下载策略
+
+`StorageModels.ts` 定义类型白名单、大小策略与显式清理参数；`TelegramClient` 关联异步统计/清理请求并处理超时和失效文件状态。`StorageManager.ets` 持有每账户独立策略、维护任务和账户代数校验，所有缓存删除经 TDLib；`MediaNetworkMonitor.ets` 只读取网络类型及漫游状态。`StoragePage.ets` 使用官方 DataPanel、Checkbox、Toggle 与确认弹层，不直接删除沙箱文件。应用只维护当前连接账户，上传暂存保持只读，边界见 [STORAGE_MANAGEMENT.md](STORAGE_MANAGEMENT.md)。
+
+## 原生视频流与控制
+
+`VideoPlayback.ts` 封装有界字节窗口、连续前缀证明、取消和定位合并。`TelegramClient` 验证消息/文件归属，`TelegramService` 绑定账户与连接代数。`VideoHttpStream.ets` 只在临时 loopback 地址提供一个随机路径、一个已授权视频的标准 Range 读取，关闭监听和连接后不保留独立媒体副本。`VideoPlayer` 使用官方 AVPlayer 网络源/完整文件 fd，保留播放意图并等待 seekDone 恢复，单击/双击/横滑/长按交互与控件都留在 ArkUI。安全边界和实际验收见 [VIDEO_PLAYER.md](VIDEO_PLAYER.md)。

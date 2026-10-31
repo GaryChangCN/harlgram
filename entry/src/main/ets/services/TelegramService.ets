@@ -1,3 +1,6 @@
+import { VideoRangeReader, VideoRangeState, VideoWindow, VideoRangeTransport } from '../model/VideoPlayback';
+import { StorageManager } from './StorageManager';
+import { MediaAttachment } from '../model/MediaModels';
 import { common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { pasteboard } from '@kit.BasicServicesKit';
@@ -9,6 +12,7 @@ import { CredentialVault, TelegramCredentials } from './CredentialVault';
 import { AttachmentService } from './AttachmentService';
 import { Contact, MessagePermissions, MessageActionState } from '../model/ChatModels';
 import { sessionStorageDirectory } from '../model/SessionStorage';
+import { AccountStore, AccountProfile, AccountRegistry } from './AccountStore';
 import { TELEGRAM_API_ID, TELEGRAM_API_HASH } from '../config/TelegramBuildConfig';
 
 export { TelegramState, TelegramHistoryState } from '../telegram/TdTypes';
@@ -21,18 +25,90 @@ class NativeTransport implements TdTransport {
 
 class TelegramService {
   private client: TelegramClient = new TelegramClient(new NativeTransport(), chatRepository);
+  readonly storageManager: StorageManager = new StorageManager(this.client);
+  private storageMaintenanceTick: number = 0;
+  private videoEpoch: number = 0;
   private timer: number = -1;
   private starting: boolean = false;
   private freshStorageRequested: boolean = false;
 
+  private registry: AccountRegistry = { active: 'primary', accounts: [] };
+  private switching: boolean = false;
+  private registryLoaded: boolean = false;
+  accounts(): AccountProfile[] { return this.registry.accounts.map((item: AccountProfile): AccountProfile => ({ id: item.id, name: item.name, avatar: item.avatar, color: item.color, avatarPath: item.avatarPath, avatarFileId: item.avatarFileId })); }
+  activeAccount(): string { return this.registry.active; }
+  isSwitching(): boolean { return this.switching; }
+  private async loadAccounts(): Promise<void> {
+    if (!this.registryLoaded) { this.registry = await AccountStore.load(); this.registryLoaded = true; }
+  }
+  private async closeForSwitch(): Promise<void> {
+    this.videoEpoch++;
+    if (this.state().phase === 'idle' || this.state().phase === 'closed') { return; }
+    this.client.leaveChat();
+    this.client.close();
+    for (let count = 0; count < 200 && this.state().phase !== 'closed'; count++) {
+      if (this.timer < 0) { this.client.drain(); }
+      await new Promise<void>((resolve: () => void) => { setTimeout(resolve, 50); });
+    }
+    if (this.state().phase !== 'closed') { throw new Error('连接尚未关闭，请稍后重试'); }
+  }
+  async switchAccount(context: common.UIAbilityContext, accountId: string): Promise<void> {
+    if (this.switching || this.starting) { throw new Error('账户正在切换'); }
+    this.switching = true;
+    try {
+      await this.loadAccounts();
+      if (accountId === this.registry.active) { return; }
+      if (!this.registry.accounts.some((item: AccountProfile) => item.id === accountId)) { throw new Error('账户不存在'); }
+      const target = await CredentialVault.load(accountId);
+      await this.closeForSwitch();
+      this.freshStorageRequested = false;
+      const next: AccountRegistry = { active: accountId, accounts: this.registry.accounts, pending: this.registry.pending };
+      await AccountStore.save(next);
+      this.registry = next;
+      if (target) { await this.connect(context, target); }
+      else { await this.startDefault(context); }
+    } finally { this.switching = false; }
+  }
+  async addAccount(context: common.UIAbilityContext): Promise<void> {
+    if (this.switching || this.starting) { throw new Error('账户正在切换'); }
+    this.switching = true;
+    try {
+      await this.loadAccounts();
+      // A pending login is not an account. Reuse its isolated storage without listing it.
+      const id = this.registry.pending || CredentialVault.createAccountId();
+      await this.closeForSwitch();
+      this.freshStorageRequested = false;
+      const next: AccountRegistry = { active: id, accounts: this.registry.accounts, pending: id };
+      await AccountStore.save(next);
+      this.registry = next;
+      await this.startDefault(context);
+    } finally { this.switching = false; }
+  }
+
   state(): TelegramState { return this.client.state(); }
-  subscribe(listener: (state: TelegramState) => void): void { this.client.subscribe(listener); }
+  subscribe(listener: (state: TelegramState) => void): void { this.client.subscribe((state: TelegramState) => {
+    const user = state.ready ? this.client.getCurrentUser() : undefined;
+    const profile = this.registry.accounts.find((item: AccountProfile) => item.id === this.registry.active);
+    if (user) {
+      const path = user.avatarPath || (profile?.avatarFileId === user.avatarFileId ? profile?.avatarPath : '') || '';
+      if (!profile || profile.name !== user.name || profile.avatarPath !== path ||
+        profile.avatar !== user.avatar || profile.color !== user.color || profile.avatarFileId !== user.avatarFileId) {
+        const updated: AccountProfile = { id: this.registry.active, name: user.name,
+          avatar: user.avatar, color: user.color, avatarPath: path, avatarFileId: user.avatarFileId };
+        this.registry.accounts = profile ? this.registry.accounts.map((item: AccountProfile): AccountProfile => item.id === updated.id ? updated : item) : this.registry.accounts.concat([updated]);
+        if (this.registry.pending === this.registry.active) { this.registry.pending = undefined; }
+        AccountStore.save(this.registry).catch(() => this.client.fail('账户资料保存失败，请稍后重试'));
+      }
+    }
+    listener(state);
+  }); }
   unsubscribe(): void { this.client.unsubscribe(); }
 
   async resume(context: common.UIAbilityContext): Promise<void> {
     if (this.state().phase !== 'idle') { return; }
     try {
-      const credentials = await CredentialVault.load();
+      await this.loadAccounts();
+      const credentials = await CredentialVault.load(this.registry.active);
       if (credentials) { await this.connect(context, credentials); }
     } catch {
       this.client.fail('无法恢复登录，请重试。');
@@ -66,7 +142,8 @@ class TelegramService {
         }
         if (this.state().phase !== 'closed') { throw new Error('正在关闭上一次连接，请稍后重试'); }
       }
-      const credentials = await CredentialVault.save(id, apiHash, this.freshStorageRequested);
+      await this.loadAccounts();
+      const credentials = await CredentialVault.save(id, apiHash, this.freshStorageRequested, this.registry.active);
       this.freshStorageRequested = false;
       await this.connect(context, credentials);
     } finally { this.starting = false; }
@@ -85,10 +162,16 @@ class TelegramService {
       apiId: credentials.apiId, apiHash: credentials.apiHash,
       databaseDirectory: directory, filesDirectory: files, encryptionKey: credentials.encryptionKey
     };
-    this.client.start(parameters);
+    await this.storageManager.initialize(context, this.registry.active);
+    this.videoEpoch++; this.client.start(parameters);
     if (this.timer < 0) {
       this.timer = setInterval(() => {
-        try { this.client.drain(); } catch {
+        try {
+          this.client.drain();
+          if (Date.now() - this.storageMaintenanceTick > 60000) {
+            this.storageMaintenanceTick = Date.now(); this.storageManager.maintain(false).catch(() => {});
+          }
+        } catch {
           this.client.fail('协议引擎运行异常，请重新启动应用。');
           clearInterval(this.timer);
           this.timer = -1;
@@ -98,6 +181,9 @@ class TelegramService {
   }
 
   setPhone(phone: string): void { this.client.setPhone(phone); }
+  editPhone(): void { this.client.editPhone(); }
+  resendCode(): void { this.client.resendCode(); }
+  register(first: string, last: string, accepted: boolean): void { this.client.register(first, last, accepted); }
   setCode(code: string): void { this.client.setCode(code); }
   setPassword(password: string): void { this.client.setPassword(password); }
   setEmail(email: string): void { this.client.setEmail(email); }
@@ -108,10 +194,47 @@ class TelegramService {
   getHistoryState(id: string): TelegramHistoryState { return this.client.getHistoryState(id); }
   viewVisibleMessages(id: string, ids: string[]): void { this.client.viewVisibleMessages(id, ids); }
   setDraft(id: string, text: string): void { this.client.setDraft(id, text); }
-  async pickImage(context: common.UIAbilityContext): Promise<string> { return AttachmentService.pickImage(context); }
+  async pickMedia(context: common.UIAbilityContext): Promise<MediaAttachment[]> { return AttachmentService.pickMedia(context); }
+  sendMedia(id: string, items: MediaAttachment[], caption: string): boolean { return this.client.sendMedia(id, items, caption); }
+  loadFullRichMessage(chatId: string, id: string): void { this.client.loadFullRichMessage(chatId, id); }
+  downloadRichMedia(chatId: string, id: string, fileId: number, cancel: boolean = false): void { this.client.downloadRichMedia(chatId, id, fileId, cancel); }
+  async createVideoReader(chatId: string, messageId: string, fileId: number): Promise<VideoRangeReader> {
+    const account = this.activeAccount(), epoch = this.videoEpoch;
+    const initialVideo = this.client.videoFile(chatId, messageId, fileId);
+    console.info('HarlgramVideo source complete=' + initialVideo.local.is_downloading_completed + ' bytes=' + initialVideo.local.downloaded_size + ' hasPath=' + !!initialVideo.local.path);
+    const current = (): boolean => epoch === this.videoEpoch && account === this.activeAccount() && this.state().ready;
+    // TDLib can retain a partial-file path after cache GC; downloadFile revalidates the native location.
+    let exists: boolean = false;
+    try { exists = !!initialVideo.local.path && await fileIo.access(initialVideo.local.path); } catch (_) {}
+    if (!current()) { throw new Error('账户已切换，请重新打开视频'); }
+    if (!exists) { await this.client.videoRange(fileId, 0, Math.min(2 * 1024 * 1024, initialVideo.size)); }
+    if (!current()) { throw new Error('账户已切换，请重新打开视频'); }
+    const source: VideoRangeTransport = {
+      current: current,
+      state: (): VideoRangeState => {
+        if (!current()) { throw new Error('账户已切换，请重新打开视频'); }
+        const file = this.client.videoFile(chatId, messageId, fileId);
+        return { path: file.local.path, size: file.size, downloaded: file.local.downloaded_size || 0, complete: file.local.is_downloading_completed };
+      },
+      prefix: (offset: number): Promise<number> => this.client.videoPrefix(fileId, offset).catch((error: Error) => { console.info('HarlgramVideo prefixFailed'); throw error; }),
+      download: (range: VideoWindow): Promise<void> => { console.info('HarlgramVideo range offset=' + range.offset + ' limit=' + range.limit); return this.client.videoRange(fileId, range.offset, range.limit); },
+      read: async (path: string, offset: number, length: number): Promise<ArrayBuffer> => {
+        const file = await fileIo.open(path, fileIo.OpenMode.READ_ONLY);
+        try {
+          const buffer = new ArrayBuffer(length);
+          const count = await fileIo.read(file.fd, buffer, { offset: offset, length: length });
+          return count === length ? buffer : buffer.slice(0, count);
+        } finally { await fileIo.close(file); }
+      },
+      cancel: (): void => { if (current()) { this.client.stopVideoRange(fileId); } }
+    };
+    return new VideoRangeReader(source);
+  }
+  downloadMedia(chatId: string, id: string): void { this.client.downloadMedia(chatId, id); }
+  cancelMedia(chatId: string, id: string): void { this.client.cancelMedia(chatId, id); }
   sendPhoto(id: string, path: string, caption: string): boolean { return this.client.sendPhoto(id, path, caption); }
   leaveChat(): void { this.client.leaveChat(); }
-  setForeground(value: boolean): void { this.client.setForeground(value); }
+  setForeground(value: boolean): void { this.client.setForeground(value); if (value) { this.storageManager.foreground(); } }
   openContact(id: string): string { return this.client.openContact(id); }
   openSavedMessages(): string { return this.client.openSavedMessages(); }
   getCurrentUser(): Contact | undefined { return this.client.getCurrentUser(); }

@@ -11,6 +11,7 @@ export class WindowAppearance {
   private static appearance: AppearanceState = new AppearanceState();
   private static initializing: Promise<void> | undefined = undefined;
   private static backgroundColor: string = '';
+  private static mediaOverlay: boolean = false;
   private static appliedColorMode: ConfigurationConstant.ColorMode | undefined = undefined;
   private static generation: number = 0;
   private static pending: Promise<void> = Promise.resolve();
@@ -125,6 +126,11 @@ export class WindowAppearance {
     }
   }
 
+  static setMediaOverlay(visible: boolean): Promise<void> {
+    WindowAppearance.mediaOverlay = visible;
+    return WindowAppearance.reapply();
+  }
+
   static reapply(): Promise<void> {
     // Serialize platform calls and read the latest theme when the work executes.
     const work = WindowAppearance.pending.catch(() => {}).then(async (): Promise<void> => {
@@ -132,8 +138,8 @@ export class WindowAppearance {
       if (!main) { return; }
       const mode = WindowAppearance.appearance.getMode();
       const dark = WindowAppearance.appearance.isDark();
-      const background = WindowAppearance.backgroundColor || (dark ? '#182430' : '#FFFFFF');
-      const foreground = dark ? '#EEF4FC' : '#162B40';
+      const background = WindowAppearance.mediaOverlay ? '#101418' : WindowAppearance.backgroundColor || (dark ? '#182430' : '#FFFFFF');
+      const foreground = WindowAppearance.mediaOverlay || dark ? '#EEF4FC' : '#162B40';
       const applicationMode = mode === 'system' ? ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET :
         mode === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT;
       if (WindowAppearance.appliedColorMode !== applicationMode) {

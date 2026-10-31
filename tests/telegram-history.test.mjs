@@ -17,7 +17,7 @@ class Transport {
 const params = { apiId: 123456, apiHash: '0'.repeat(32), databaseDirectory: '/fixture/db', filesDirectory: '/fixture/files', encryptionKey: 'Zml4dHVyZQ==' };
 function setup() {
   const transport = new Transport(); const repository = new ChatRepository();
-  const client = new TelegramClient(transport, repository); client.start(params);
+  const client = new TelegramClient(transport, repository); client.setMediaNetwork('wifi'); client.start(params);
   transport.push({ '@type': 'updateAuthorizationState', authorization_state: { '@type': 'authorizationStateReady' } }); client.drain();
   return { transport, repository, client };
 }
@@ -438,7 +438,7 @@ test('anonymous channel senders resolve independently from user IDs and receive 
 
 test('initialization key mismatch becomes actionable without exposing the TDLib error payload', () => {
   const transport = new Transport(); const repository = new ChatRepository();
-  const client = new TelegramClient(transport, repository); client.start(params);
+  const client = new TelegramClient(transport, repository); client.setMediaNetwork('wifi'); client.start(params);
   transport.push({ '@type': 'updateAuthorizationState', authorization_state: { '@type': 'authorizationStateWaitTdlibParameters' } }); client.drain();
   transport.push({ '@type': 'error', '@extra': transport.last('setTdlibParameters')['@extra'], code: 401,
     message: 'Wrong database encryption key' }); client.drain();
@@ -452,4 +452,183 @@ test('initialization errors leave the indefinite starting spinner and remain pri
   transport.push({ '@type': 'error', '@extra': transport.last('setTdlibParameters')['@extra'], code: 500,
     message: 'private internal filesystem details' }); client.drain();
   assert.equal(client.state().phase, 'error'); assert.equal(client.state().error.includes('private'), false);
+});
+
+test('video previews download only thumbnails; full video is user driven with progress, cancellation and retry', () => {
+  const f = setup(); load(f, chat(101)); f.client.openChat('101');
+  const video = message(300, 101, { media_album_id: '9223372036854775806', content: {
+    '@type': 'messageVideo', caption: { text: 'Fixture clip' }, video: {
+      duration: 8, width: 640, height: 360, video: file(900), thumbnail: { width: 160, height: 90, file: file(901) }
+    }
+  } });
+  f.transport.push({ '@type': 'updateNewMessage', message: video }); f.client.drain();
+  assert.equal(f.transport.last('downloadFile').file_id, 901);
+  assert.equal(f.transport.all('downloadFile').some(x => x.file_id === 900), false);
+  let item = f.repository.getMessages('101').find(x => x.id === '300');
+  assert.equal(item.mediaKind, 'video'); assert.equal(item.mediaAlbumId, '9223372036854775806');
+  assert.equal(item.mediaDuration, 8); assert.equal(item.mediaPath, undefined);
+  f.client.downloadMedia('101', '300'); const download = f.transport.last('downloadFile');
+  assert.equal(download.file_id, 900);
+  f.transport.push({ '@type': 'updateFile', file: file(900, { local: {
+    path: '', can_be_downloaded: true, is_downloading_active: true, is_downloading_completed: false, downloaded_size: 5000
+  } }) }); f.client.drain();
+  item = f.repository.getMessages('101').find(x => x.id === '300');
+  assert.equal(item.mediaProgress, 50); assert.equal(item.mediaDownloading, true);
+  f.client.cancelMedia('101', '300'); assert.equal(f.transport.last('cancelDownloadFile').file_id, 900);
+  f.transport.push({ '@type': 'error', '@extra': download['@extra'], code: 500, message: 'network unavailable' }); f.client.drain();
+  assert.match(f.repository.getMessages('101').find(x => x.id === '300').mediaError, /下载失败/);
+  f.transport.push({ '@type': 'updateFile', file: file(900) }); f.client.drain();
+  f.client.downloadMedia('101', '300');
+  assert.equal(f.transport.all('downloadFile').filter(x => x.file_id === 900).length, 2);
+  f.transport.push({ '@type': 'updateFile', file: completed(900, '/fixture/clip.mp4') }); f.client.drain();
+  item = f.repository.getMessages('101').find(x => x.id === '300');
+  assert.equal(item.mediaPath, '/fixture/clip.mp4'); assert.equal(item.mediaProgress, 100);
+});
+
+test('mixed albums use the fixed TDLib input schema, preserve attachment order and retain all failed media', () => {
+  const f = setup(); load(f, chat(101));
+  const attachments = [
+    { path: '/fixture/one.jpg', kind: 'photo', width: 640, height: 480, duration: 0, size: 4000 },
+    { path: '/fixture/two.mp4', kind: 'video', width: 640, height: 360, duration: 8, size: 10000 }
+  ];
+  assert.equal(f.client.sendMedia('101', attachments, 'Fixture album'), true);
+  const request = f.transport.last('sendMessageAlbum');
+  assert.equal(request.chat_id, 101); assert.equal(request.input_message_contents.length, 2);
+  assert.equal(request.input_message_contents[0].photo.photo.path, '/fixture/one.jpg');
+  assert.equal(request.input_message_contents[1].video.video.path, '/fixture/two.mp4');
+  assert.equal(request.input_message_contents[1].video.duration, 8);
+  assert.equal(request.input_message_contents[1].video.supports_streaming, false);
+  assert.equal(request.input_message_contents[0].caption.text, 'Fixture album');
+  assert.equal(request.input_message_contents[1].caption.text, '');
+  f.transport.push({ '@type': 'error', '@extra': request['@extra'], code: 400, message: 'MEDIA_INVALID' }); f.client.drain();
+  const failed = f.repository.getMessages('101').filter(x => x.status === 'failed');
+  assert.equal(failed.length, 2); assert.equal(failed[0].mediaAlbumId, failed[1].mediaAlbumId);
+  assert.deepEqual(failed.map(x => x.mediaPath), attachments.map(x => x.path));
+  assert.equal(failed[1].mediaSize, 10000); assert.equal(failed[1].mediaKind, 'video');
+});
+
+test('media rejects invalid metadata, limits and attachment counts without sending a request', () => {
+  const f = setup(); load(f, chat(101));
+  const photo = { path: '/fixture/one.jpg', kind: 'photo', width: 0, height: 0, duration: 0, size: 4000 };
+  for (const items of [[], Array(11).fill(photo), [{ ...photo, size: NaN }], [{ ...photo, width: Infinity }],
+    [{ ...photo, size: 10000001 }], [{ ...photo, path: 'relative.jpg' }], [{ ...photo, kind: 'video', size: 2000000001 }]]) {
+    assert.equal(f.client.sendMedia('101', items), false);
+  }
+  assert.equal(f.transport.all('sendMessageAlbum').length, 0); assert.equal(f.transport.all('sendMessage').length, 0);
+});
+
+test('secret and spoiler videos are never revealed or downloaded', () => {
+  const f = setup(); load(f, chat(101)); f.client.openChat('101');
+  for (const [id, flags] of [[320, { has_spoiler: true }], [321, { is_secret: true }]]) {
+    f.transport.push({ '@type': 'updateNewMessage', message: message(id, 101, { content: {
+      '@type': 'messageVideo', ...flags, video: { duration: 1, width: 100, height: 100, video: file(id + 1000) }
+    } }) });
+  }
+  f.client.drain();
+  assert.equal(f.transport.all('downloadFile').length, 0);
+  assert.equal(f.repository.getMessages('101').every(x => !x.mediaKind && !x.mediaPath), true);
+});
+
+test('album responses retain missing attachments and never fabricate their cloud confirmation', () => {
+  const f = setup(); load(f, chat(101));
+  const photo = { path: '/fixture/one.jpg', kind: 'photo', width: 640, height: 480, duration: 0, size: 4000 };
+  assert.equal(f.client.sendMedia('101', [photo, { ...photo, path: '/fixture/two.jpg' }], 'Fixture album'), true);
+  const request = f.transport.last('sendMessageAlbum'); photo.path = '/fixture/mutated.jpg';
+  reply(f, request, [photoMessage(500, 101, [size(950)], {}), null]);
+  const items = f.repository.getMessages('101');
+  assert.equal(items.find(x => x.id === '500').status, 'received');
+  assert.equal(items.filter(x => x.status === 'failed').length, 1);
+  assert.equal(items.find(x => x.status === 'failed').mediaPath, '/fixture/two.jpg');
+});
+
+test('rich text, link previews, forwarding and group sender avatars survive protocol mapping', () => {
+  const f = setup(); load(f, chat(101)); f.client.openChat('101');
+  f.transport.push({ '@type': 'updateUser', user: { id: 5, first_name: 'Fixture sender', last_name: '', status: { '@type': 'userStatusOffline' },
+    profile_photo: { small: file(990) } } });
+  const rich = message(600, 101, { sender_id: { '@type': 'messageSenderUser', user_id: 5 },
+    forward_info: { origin: { '@type': 'messageOriginHiddenUser', sender_name: 'Fixture source' } }, content: {
+      '@type': 'messageText', text: { '@type': 'formattedText', text: 'Hello link', entities: [
+        { offset: 0, length: 5, type: { '@type': 'textEntityTypeBold' } },
+        { offset: 6, length: 4, type: { '@type': 'textEntityTypeTextUrl', url: 'https://example.org' } }
+      ] }, link_preview: { url: 'https://example.org', title: 'Fixture title', site_name: 'Fixture', description: { text: 'Fixture preview' } }
+    } });
+  f.transport.push({ '@type': 'updateNewMessage', message: rich }); f.client.drain();
+  const item = f.repository.getMessages('101').find(x=>x.id==='600');
+  assert.equal(item.entities[0].type,'textEntityTypeBold'); assert.equal(item.entities[1].url,'https://example.org');
+  assert.equal(item.forwardName,'Fixture source'); assert.equal(item.linkPreview.description,'Fixture preview');
+  assert.equal(item.senderAvatarFileId,990);
+  f.transport.push({ '@type': 'updateFile', file: completed(990,'/fixture/avatar.jpg') }); f.client.drain();
+  assert.equal(item.senderAvatarPath,'/fixture/avatar.jpg');
+});
+test('service messages and server outbox read updates keep distinct presentation semantics', () => {
+  const f=setup(); load(f,chat(101));
+  f.transport.push({ '@type':'updateNewMessage', message:message(610,101,{sender_id:{'@type':'messageSenderUser',user_id:5},content:{'@type':'messageChatJoinByLink'}}) });
+  f.transport.push({ '@type':'updateNewMessage', message:message(611,101,{is_outgoing:true}) }); f.client.drain();
+  assert.equal(f.repository.getMessages('101').find(x=>x.id==='610').service,true);
+  assert.equal(f.repository.getMessages('101').find(x=>x.id==='611').read,false);
+  f.transport.push({ '@type':'updateChatReadOutbox',chat_id:101,last_read_outbox_message_id:611 }); f.client.drain();
+  assert.equal(f.repository.getMessages('101').find(x=>x.id==='611').read,true);
+});
+
+test('reply previews fetch missing originals without inserting history or revealing spoilers', () => {
+  const f=setup();load(f,chat(101));f.client.openChat('101');
+  f.transport.push({'@type':'updateNewMessage',message:message(620,101,{reply_to:{'@type':'messageReplyToMessage',chat_id:101,message_id:10}})});f.client.drain();
+  const request=f.transport.last('getRepliedMessage');assert.equal(request.message_id,620);
+  f.transport.push({'@type':'message','@extra':request['@extra'],...message(10,101,{sender_id:{'@type':'messageSenderUser',user_id:5},content:{'@type':'messageText',text:{text:'secret original',entities:[{offset:0,length:6,type:{'@type':'textEntityTypeSpoiler'}}]}}})});f.client.drain();
+  const items=f.repository.getMessages('101');assert.equal(items.length,1);
+  assert.equal(items[0].replyPreview,'•••••• original');assert.equal(items[0].replyToMessageId,'10');
+  assert.equal(f.transport.all('getRepliedMessage').length,1);
+});
+test('static stickers use bounded previews and animated emoji retain readable content', () => {
+  const f=setup();load(f,chat(101));f.client.openChat('101');
+  f.transport.push({'@type':'updateNewMessage',message:message(630,101,{content:{'@type':'messageSticker',sticker:{width:512,height:512,emoji:'🙂',format:{'@type':'stickerFormatWebp'},sticker:file(995)}}})});
+  f.transport.push({'@type':'updateNewMessage',message:message(631,101,{content:{'@type':'messageAnimatedEmoji',emoji:'🙂'}})});f.client.drain();
+  assert.equal(f.transport.last('downloadFile').file_id,995);
+  f.transport.push({'@type':'updateFile',file:completed(995,'/fixture/sticker.webp')});f.client.drain();
+  assert.equal(f.repository.getMessages('101').find(x=>x.id==='630').stickerPath,'/fixture/sticker.webp');
+  assert.equal(f.repository.getMessages('101').find(x=>x.id==='631').text,'🙂');
+  assert.equal(f.repository.getMessages('101').find(x=>x.id==='631').largeEmoji,true);
+});
+
+test('rich-message blocks map text and embedded media, and embedded downloads validate the owning message',()=>{
+ const f=setup();load(f,chat(101));f.client.openChat('101');
+ f.transport.push({'@type':'updateNewMessage',message:message(640,101,{content:{'@type':'messageRichMessage',message:{is_full:true,is_rtl:false,blocks:[
+  {'@type':'pageBlockParagraph',text:{'@type':'richTextSpoiler',text:{'@type':'richTextPlain',text:'secret'}}},
+  {'@type':'pageBlockVideo',video:{duration:8,width:640,height:360,video:file(998)},caption:{text:{'@type':'richTextPlain',text:'Fixture video'}}}
+ ]}}})});f.client.drain();
+ const item=f.repository.getMessages('101').find(x=>x.id==='640');
+ assert.equal(item.richBlocks.length,2);assert.equal(item.richBlocks[1].media.sourceMessageId,'640');
+ assert.equal(item.entities[0].type,'textEntityTypeSpoiler');
+ const before=f.transport.all('downloadFile').length;
+ f.client.downloadRichMedia('101','640',999);assert.equal(f.transport.all('downloadFile').length,before);
+ f.client.downloadRichMedia('101','640',998);assert.equal(f.transport.last('downloadFile').file_id,998);
+ f.transport.push({'@type':'updateFile',file:completed(998,'/fixture/rich.mp4')});f.client.drain();
+ assert.equal(item.richBlocks[1].media.mediaPath,'/fixture/rich.mp4');
+});
+
+test('truncated rich messages load their full server version with deduplication and retry',()=>{
+ const f=setup();load(f,chat(101));f.client.openChat('101');
+ const paragraph=text=>({'@type':'pageBlockParagraph',text:{'@type':'richTextPlain',text}});
+ f.transport.push({'@type':'updateNewMessage',message:message(650,101,{content:{'@type':'messageRichMessage',message:{'@type':'richMessage',is_full:false,is_rtl:false,blocks:[paragraph('Preview')]}}})});f.client.drain();
+ f.client.loadFullRichMessage('101','650');f.client.loadFullRichMessage('101','650');
+ assert.equal(f.transport.all('getFullRichMessage').length,1);const request=f.transport.last('getFullRichMessage');
+ f.transport.push({'@type':'error','@extra':request['@extra'],code:500,message:'fixture failure'});f.client.drain();
+ assert.equal(f.repository.getMessages('101').find(x=>x.id==='650').richLoading,false);
+ f.client.loadFullRichMessage('101','650');const retry=f.transport.last('getFullRichMessage');
+ f.transport.push({'@type':'richMessage','@extra':retry['@extra'],is_full:true,is_rtl:false,blocks:[paragraph('Preview'),paragraph('Full content')]});f.client.drain();
+ const items=f.repository.getMessages('101');assert.equal(items.length,1);assert.equal(items[0].richTruncated,false);
+ assert.equal(items[0].text,'Preview\nFull content');
+});
+
+test('full-rich-message timeout releases retry and late responses cannot overwrite it',()=>{
+ const f=setup();load(f,chat(101));f.client.openChat('101');
+ f.transport.push({'@type':'updateNewMessage',message:message(660,101,{content:{'@type':'messageRichMessage',message:{'@type':'richMessage',is_full:false,is_rtl:false,blocks:[{'@type':'pageBlockParagraph',text:{'@type':'richTextPlain',text:'Preview'}}]}}})});f.client.drain();
+ const originalNow=Date.now;let now=originalNow();Date.now=()=>now;
+ try {
+  f.client.loadFullRichMessage('101','660');const request=f.transport.last('getFullRichMessage');now+=30001;f.client.drain();
+  const current=f.repository.getMessages('101').find(x=>x.id==='660');assert.equal(current.richLoading,false);assert.match(current.richError,/超时/);
+  f.transport.push({'@type':'richMessage','@extra':request['@extra'],is_full:true,is_rtl:false,blocks:[]});f.client.drain();
+  assert.equal(f.repository.getMessages('101').find(x=>x.id==='660').richTruncated,true);
+  f.client.loadFullRichMessage('101','660');assert.equal(f.transport.all('getFullRichMessage').length,2);
+ } finally {Date.now=originalNow;}
 });

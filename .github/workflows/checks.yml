@@ -34,6 +34,11 @@ jobs:
           export HARLGRAM_TYPESCRIPT="$GITHUB_WORKSPACE/.local/ci/node_modules/typescript/lib/typescript.js"
           ./scripts/test-domain.sh
 
+      - name: Verify static progress pages
+        run: |
+          python3 scripts/build-website.py --check
+          node --check website/app.js
+
       - name: Check tracked files for private or generated content
         run: python3 scripts/check-public-tree.py
 
