@@ -47,9 +47,10 @@ export struct ForwardChatSheet {
                 imagePath: chat.avatarPath || '', avatarBorderColor: this.surface() })
               Text(chat.title).fontSize(15).fontColor(this.foreground()).maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-              if (chat.id === this.selectedId) { Text('✓').fontSize(20).fontColor('#268BDE') }
+              Radio({ value: chat.id, group: 'forward-target' }).checked(chat.id === this.selectedId)
+                .enabled(!this.busy).onChange((checked: boolean) => { if (checked) this.selectedId = chat.id; })
             }.width('100%').padding({ left: 10, right: 14, top: 10, bottom: 10 }).borderRadius(12)
-              .backgroundColor(chat.id === this.selectedId ? (this.dark ? '#203B55' : '#EAF4FF') : Color.Transparent)
+              .backgroundColor(Color.Transparent)
               .enabled(!this.busy).onClick(() => { this.selectedId = chat.id; })
           }
         }, (chat: ChatSummary) => `${chat.id}:${chat.avatarPath || ''}:${chat.title}:${chat.id === this.selectedId}`)
@@ -58,7 +59,7 @@ export struct ForwardChatSheet {
         Text(this.error).fontSize(12).fontColor('#C55D5D').width('100%').maxLines(3)
       }
       Button(this.busy ? '正在转发…' : (this.selectedId.length > 0 ? `转发到「${this.selectedTitle()}」` : '选择一个聊天'))
-        .fontSize(14).fontColor('#FFFFFF').height(48).width('100%').backgroundColor('#268BDE').borderRadius(14)
+        .buttonStyle(ButtonStyleMode.EMPHASIZED).height(48).width('100%')
         .enabled(this.selectedId.length > 0 && !this.busy).onClick(() => this.onForward(this.selectedId))
     }.width('100%').height('100%').padding({ left: 16, right: 16, top: 8, bottom: 18 }).backgroundColor(this.surface())
   }

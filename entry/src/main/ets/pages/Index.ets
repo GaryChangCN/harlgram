@@ -1,3 +1,5 @@
+import { HdsPage } from '../components/HdsPage';
+import { HdsSettingsRow } from '../components/HdsSettingsRow';
 import { StoragePage } from '../components/StoragePage';
 import { common } from '@kit.AbilityKit';
 import { KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
@@ -59,6 +61,7 @@ interface MessageDialogButton { text: string; color: string; }
 struct Index {
   @StorageProp('harlgram.darkMode') @Watch('syncWindowBackground') private darkMode: boolean = false;
   @StorageProp('harlgram.appearanceMode') private appearanceMode: AppearanceMode = 'system';
+  @State private menuVisible: boolean = false;
   @State private storageRoute: string = 'storage';
   @State @Watch('syncWindowBackground') private currentTab: number = 0;
   @State @Watch('syncWindowBackground') private page: string = 'welcome';
@@ -95,7 +98,6 @@ struct Index {
   @State private contacts: Contact[] = [];
   @State private currentUser: Contact | undefined = undefined;
   @State private draft: string = '';
-  @State private menuVisible: boolean = false;
   @State private ready: boolean = false;
   @State private appearanceObserverReady: boolean = false;
   @State private viewportWidth: number = 360;
@@ -929,8 +931,8 @@ struct Index {
     this.persistDraft();
     if (this.isTelegram && this.page === 'chat') { telegramService.leaveChat(); }
     this.page = this.telegram.ready || this.previewMode ? 'home' : 'welcome';
-    this.menuVisible = false;
     this.navigationStack.clear(false);
+    this.menuVisible = false;
     this.syncNavigation();
     this.refresh();
   }
@@ -958,8 +960,8 @@ struct Index {
     if (this.isTelegram) { telegramService.openChat(chat.id); } else { chatRepository.markRead(chat.id); }
     this.messages = chatRepository.getMessages(chat.id);
     this.draft = chatRepository.getDraft(chat.id);
-    this.menuVisible = false;
     this.page = 'chat';
+    this.menuVisible = false;
     this.syncNavigation();
     this.refresh();
     this.save();
@@ -1273,57 +1275,22 @@ struct Index {
   }
 
   @Builder
-  private header() {
-    Row({ space: 8 }) {
-      Text('Harlgram').fontSize(23).fontWeight(FontWeight.Medium).fontColor(this.ink()).layoutWeight(1)
-      if (!this.isTelegram) {
-        Text('离线预览').fontSize(11).fontColor(this.mutedInk())
-      }
-      Button({ type: ButtonType.Circle }) {
-        this.icon($r('app.media.hg_edit_blue'), 22)
-      }.width(42).height(42).backgroundColor(Color.Transparent)
-        .onClick(() => { this.currentTab = 1; this.contactSearch = ''; })
-        .accessibilityText('新建会话')
-      Button({ type: ButtonType.Circle }) {
-        SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(24).fontColor(['#268BDE'])
-      }.width(42).height(42).backgroundColor(Color.Transparent)
-        .onClick(() => this.openChatSearch()).accessibilityText('搜索会话').id('open-chat-search')
-    }.width('100%').height(64).padding({ left: 18, right: 12 })
-  }
-
-  @Builder
   private contactsSearchBox() {
-    Row({ space: 10 }) {
-      this.icon($r('app.media.hg_search'), 19)
-      TextInput({ text: this.contactSearch, placeholder: '搜索联系人' })
-        .fontSize(14).fontColor(this.ink()).placeholderColor(this.mutedInk()).backgroundColor(Color.Transparent)
-        .height(42).padding(0).layoutWeight(1).caretColor('#268BDE')
-        .onChange((value: string) => { this.contactSearch = value; })
-        .accessibilityText('搜索联系人')
-    }.height(46).padding({ left: 15, right: 12 }).backgroundColor(this.pageBackground()).borderRadius(14)
-      .margin({ left: 16, right: 16, bottom: 10 })
+    Search({ value: this.contactSearch, placeholder: '搜索联系人' }).height(44).width('100%')
+      .textFont({ size: 16 }).cancelButton({ style: CancelButtonStyle.INPUT })
+      .onChange((value: string) => { this.contactSearch = value; }).accessibilityText('搜索联系人')
+      .margin({ bottom: 8 }).padding({ left: 16, right: 16 })
   }
 
   @Builder
   private filterBar() {
-    Scroll() {
-      Row({ space: 4 }) {
-        ForEach(this.filters, (label: string, index: number) => {
-          Button({ type: ButtonType.Normal }) {
-            Row({ space: 5 }) {
-              Text(label).fontSize(14).fontWeight(this.selectedFilter === index ? FontWeight.Medium : FontWeight.Regular)
-                .fontColor(this.selectedFilter === index ? '#268BDE' : this.mutedInk())
-              if (index === 1 && this.unreadCount() > 0) {
-                Text(this.unreadCount().toString()).fontSize(10).fontColor(this.mutedInk())
-              }
-            }.padding({ left: 12, right: 12 })
-          }.height(34).borderRadius(9)
-            .backgroundColor(this.selectedFilter === index ? this.softBlue() : Color.Transparent)
-            .onClick(() => this.selectedFilter = index).accessibilityText(`${label}会话`)
-        }, (label: string) => label)
-      }.padding({ left: 12, right: 12 })
-    }.width('100%').height(46).scrollable(ScrollDirection.Horizontal)
-      .scrollBar(BarState.Off).align(Alignment.Start)
+    Tabs({ index: $$this.selectedFilter }) {
+      ForEach(this.filters, (label: string, index: number) => {
+        TabContent() { Column() {}.height(0) }
+          .tabBar(SubTabBarStyle.of(index === 1 && this.unreadCount() > 0 ? label + ' ' + this.unreadCount() : label))
+      }, (label: string) => label)
+    }.width('100%').height(48).barHeight(48).barMode(BarMode.Fixed)
+      .scrollable(false).animationDuration(0).divider(null)
   }
 
   @Builder
@@ -1375,31 +1342,10 @@ struct Index {
 
   @Builder
   private mainChatsList() {
-    Column() {
-      this.header()
-      this.filterBar()
-      if (this.isTelegram && this.telegram.connection.length > 0 && this.telegram.connection !== '已连接') {
-        Text(this.telegram.connection).fontSize(12).fontColor(this.mutedInk())
-          .width('100%').padding({ top: 7, bottom: 7 }).textAlign(TextAlign.Center)
-      }
-      List() {
-        if (this.filteredChats().length === 0) {
-          ListItem() {
-            this.emptyState(this.selectedFilter === 1 ? '没有未读消息' : '没有找到会话', '可从联系人开始聊天')
-          }
-        }
-        ForEach(this.filteredChats(), (chat: ChatSummary) => {
-          ListItem() { this.chatRow(chat) }
-        }, (chat: ChatSummary) => this.chatRenderKey(chat))
-      }.layoutWeight(1).width('100%').edgeEffect(EdgeEffect.Spring)
-        .divider({ strokeWidth: 0.5, color: this.line(), startMargin: 82, endMargin: 16 }).contentEndOffset(84)
-        .scrollBar(BarState.Off)
-        .onReachEnd(() => {
-          if (this.isTelegram && !this.chatSearchVisible && this.currentTab === 0 && this.page === 'home') {
-            telegramService.loadMoreChats();
-          }
-        })
-    }.width('100%')
+    HdsPage({ title: 'Harlgram', subtitle: this.isTelegram ? '' : '离线预览', showBack: false,
+      surface: true, dark: this.darkMode, firstLabel: '新建会话', firstSymbol: $r('sys.symbol.square_and_pencil'),
+      firstAction: () => { this.currentTab = 1; this.contactSearch = ''; },
+      secondLabel: '搜索会话', secondSymbol: $r('sys.symbol.magnifyingglass'), secondAction: () => this.openChatSearch(), content: () => { this.chatsBody() } }).width('100%')
       .height(this.chatSearchVisible && this.searchBackgroundHeight > 0 ? this.searchBackgroundHeight : '100%')
       .backgroundColor(this.surface())
       .onAreaChange((_oldArea: Area, area: Area) => {
@@ -1422,7 +1368,7 @@ struct Index {
           })
           .onSubmit(() => { this.chatSearchController.stopEditing(); })
           .onAppear(() => this.focusChatSearch()).accessibilityText('搜索会话')
-        Button('取消', { type: ButtonType.Normal }).height(44).width(52).fontSize(16)
+        Button('取消', { type: ButtonType.Normal, buttonStyle: ButtonStyleMode.TEXTUAL }).height(44).width(52).fontSize(16)
           .padding(0).fontColor('#268BDE').backgroundColor(Color.Transparent)
           .onClick(() => this.closeChatSearch()).accessibilityText('取消搜索').id('cancel-chat-search')
       }.height(64).width('100%').padding({ left: 16, right: 8 })
@@ -1454,31 +1400,7 @@ struct Index {
 
   @Builder
   private contactsPage() {
-    Column() {
-      Text('联系人').fontSize(23).fontWeight(FontWeight.Medium).fontColor(this.ink())
-        .width('100%').height(64).padding({ left: 18, right: 18 }).textAlign(TextAlign.Start)
-      this.contactsSearchBox()
-      List() {
-        if (this.filteredContacts().length === 0) {
-          ListItem() { this.emptyState('没有找到联系人', '请尝试其他姓名或关键词') }
-        }
-        ForEach(this.filteredContacts(), (contact: Contact) => {
-          ListItem() {
-            Row({ space: 12 }) {
-              this.avatar(contact.avatar, contact.color, 46, contact.online, contact.avatarPath || '')
-              Column({ space: 6 }) {
-                Text(contact.name).fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.ink())
-                  .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(contact.subtitle).fontSize(12).fontColor(this.mutedInk()).maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-              }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-            }.width('100%').padding({ left: 16, right: 16, top: 14, bottom: 14 })
-              .onClick(() => this.openContact(contact)).accessibilityText(`与${contact.name}开始会话`)
-          }
-        }, (contact: Contact) => this.contactRenderKey(contact))
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
-        .divider({ strokeWidth: 0.5, color: this.line(), startMargin: 74, endMargin: 16 }).contentEndOffset(84)
-    }.height('100%').width('100%').backgroundColor(this.surface())
+    HdsPage({ title: '联系人', showBack: false, surface: true, dark: this.darkMode, content: () => { this.contactsBody() } }).height('100%').width('100%').backgroundColor(this.surface())
   }
 
   @Builder
@@ -1489,89 +1411,12 @@ struct Index {
 
   @Builder
   private settingRow(icon: Resource, title: string, detail: string, action: () => void) {
-    Row({ space: 13 }) {
-      Stack() { this.icon(icon, 20) }.width(34).height(34).backgroundColor(this.softBlue()).borderRadius(10)
-      Text(title).fontSize(14).fontColor(this.ink()).layoutWeight(1)
-      Text(detail).fontSize(11).fontColor(this.mutedInk())
-      this.icon($r('app.media.hg_chevron'), 15)
-    }.height(64).padding({ left: 16, right: 16 }).width('100%')
-      .onClick(action).accessibilityText(`${title}，${detail}`)
+    HdsSettingsRow({ title: title, value: detail, icon: icon, action: action })
   }
 
   @Builder
   private settingsPage() {
-    Scroll() {
-      Column() {
-        Row() {
-          Text('设置').fontSize(23).fontWeight(FontWeight.Medium).fontColor(this.ink())
-          Blank()
-        }.width('100%').height(64).padding({ left: 2, right: 2 })
-        Column({ space: 16 }) {
-          Row({ space: 15 }) {
-            this.avatar(this.currentUser?.avatar || '我', this.currentUser?.color || '#78A5D8', 44, false, this.currentUser?.avatarPath || '')
-            Column({ space: 7 }) {
-              Text(this.isTelegram ? (this.currentUser?.name || 'Telegram') : '离线预览')
-                .fontSize(17).fontWeight(FontWeight.Medium).fontColor(this.ink())
-                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-              Text(this.isTelegram ? '已登录' : '消息仅保存在本机').fontSize(11).fontColor(this.mutedInk())
-            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-          }.width('100%')
-          if (!this.isTelegram) {
-            Button({ type: ButtonType.Normal }) {
-              Row({ space: 8 }) {
-                this.icon($r('app.media.hg_send_blue'), 17)
-                Text('登录 Telegram').fontSize(13).fontWeight(FontWeight.Medium).fontColor('#268BDE')
-                Blank()
-                this.icon($r('app.media.hg_chevron_blue'), 15)
-              }.width('100%')
-            }.height(42).width('100%').backgroundColor(this.softBlue()).borderRadius(11)
-              .onClick(() => this.enterAccount())
-          }
-        }.width('100%').padding(16).backgroundColor(this.surface()).borderRadius(16)
-        if (this.isTelegram) {
-          Column() {
-            this.settingRow($r('app.media.hg_group'), '账户管理', '', () => {
-              this.accountProfiles = telegramService.accounts();
-              this.activeAccountId = telegramService.activeAccount();
-              this.page = 'accounts';
-            })
-          }.width('100%').backgroundColor(this.surface()).borderRadius(17).margin({ top: 16 })
-        }
-        if (this.isTelegram) {
-          this.sectionLabel('数据与存储')
-          Column() {
-            this.settingRow($r('app.media.hg_globe_blue'), '存储管理', '', () => { this.storageRoute = 'storage'; this.page = 'storage'; })
-          }.width('100%').backgroundColor(this.surface()).borderRadius(17)
-        }
-        this.sectionLabel('个性化')
-        Column() {
-          Row({ space: 13 }) {
-            Stack() { this.icon($r('app.media.hg_moon_blue'), 20) }
-              .width(34).height(34).backgroundColor(this.softBlue()).borderRadius(10)
-            Text('外观').fontSize(14).fontColor(this.ink()).layoutWeight(1)
-            Text(this.appearanceLabel()).fontSize(11).fontColor(this.mutedInk())
-            this.icon($r('app.media.hg_chevron'), 15)
-          }.height(64).padding({ left: 16, right: 16 }).width('100%')
-            .onClick(() => this.chooseAppearance()).accessibilityText(`外观，${this.appearanceLabel()}`)
-        }.width('100%').backgroundColor(this.surface()).borderRadius(17)
-        this.sectionLabel('账号与数据')
-        Column() {
-          this.settingRow($r('app.media.hg_bookmark_blue'), '收藏夹', '', () => this.openSavedMessages())
-          Divider().color(this.line()).margin({ left: 62, right: 17 })
-          this.settingRow($r('app.media.hg_globe_blue'), '连接状态',
-            this.isTelegram ? (this.telegram.connection || '连接中') : '离线预览', () => this.enterAccount())
-        }.width('100%').backgroundColor(this.surface()).borderRadius(17)
-        if (this.isTelegram) {
-          Button('退出 Telegram 账号').fontSize(13).fontColor('#D56464').height(46).width('100%')
-            .backgroundColor(this.surface()).borderRadius(15).margin({ top: 18 })
-            .onClick(() => this.confirmLogOut())
-        }
-        this.sectionLabel('关于')
-        Column() {
-          this.settingRow($r('app.media.hg_info_blue'), '关于 Harlgram', '1.0.0', () => this.openAbout())
-        }.width('100%').backgroundColor(this.surface()).borderRadius(17)
-      }.width('100%').padding({ left: 16, right: 16, bottom: 100 })
-    }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.TopStart).backgroundColor(this.pageBackground())
+    HdsPage({ title: '设置', showBack: false, dark: this.darkMode, content: () => { this.settingsBody() } })
   }
 
   @Builder
@@ -1591,24 +1436,7 @@ struct Index {
 
   @Builder
   private accountManagementPage() {
-    Column() {
-      this.pageHeader('账户管理')
-      Scroll() {
-        Column({ space: 16 }) {
-          Column() {
-            ForEach(this.accountProfiles, (account: AccountProfile) => {
-              this.accountRow(account)
-            }, (account: AccountProfile) => account.id)
-          }.width('100%').backgroundColor(this.surface()).borderRadius(17)
-          Column() {
-            this.settingRow($r('app.media.hg_edit_blue'), '添加账户', '', () => this.changeAccount())
-          }.width('100%').backgroundColor(this.surface()).borderRadius(17).enabled(!this.accountSwitching)
-          if (this.telegram.error.length > 0) {
-            Text(this.telegram.error).fontSize(13).fontColor('#D56464').width('100%')
-          }
-        }.width('100%').padding(16)
-      }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.TopStart)
-    }.width('100%').height('100%').backgroundColor(this.pageBackground())
+    HdsPage({ title: '账户管理', dark: this.darkMode, onBack: () => this.goBack(), content: () => { this.accountsBody() } }).width('100%').height('100%').backgroundColor(this.pageBackground())
   }
 
   @Builder
@@ -2123,16 +1951,6 @@ struct Index {
   }
 
   @Builder
-  private pageHeader(title: string) {
-    Row({ space: 8 }) {
-      Button({ type: ButtonType.Circle }) { this.icon($r('app.media.hg_back_blue'), 24) }
-        .width(40).height(44).backgroundColor(Color.Transparent).onClick(() => this.goBack())
-        .accessibilityText('返回')
-      Text(title).fontSize(19).fontWeight(FontWeight.Medium).fontColor(this.ink()).layoutWeight(1)
-    }.height(66).width('100%').padding({ left: 10, right: 20 }).backgroundColor(this.surface())
-  }
-
-  @Builder
   private brandLogo(size: number, radius: number) {
     Image($r('app.media.harlgram_icon')).width(size).height(size)
       .objectFit(ImageFit.Contain).borderRadius(radius).clip(true)
@@ -2147,11 +1965,11 @@ struct Index {
         Text('Harlgram').fontSize(32).fontWeight(FontWeight.Medium).fontColor(this.ink())
           .margin({ bottom: 28 })
         Button('开始聊天').fontSize(16).fontWeight(FontWeight.Medium).fontColor('#FFFFFF')
-          .height(50).width('100%').backgroundColor('#268BDE').borderRadius(13)
+          .height(50).width('100%').buttonStyle(ButtonStyleMode.EMPHASIZED)
           .onClick(() => this.enterAccount())
         if (TELEGRAM_API_ID <= 0 && this.telegram.phase === 'idle' && !this.isTelegram) {
           Button('离线预览').fontSize(13).fontColor('#268BDE').height(38)
-            .backgroundColor(Color.Transparent).onClick(() => this.preview())
+            .buttonStyle(ButtonStyleMode.TEXTUAL).onClick(() => this.preview())
         }
         if (TELEGRAM_API_ID <= 0 && this.telegram.phase === 'idle') {
           Text('开发者配置').fontSize(11).fontColor(this.mutedInk()).padding(8)
@@ -2171,7 +1989,7 @@ struct Index {
       Text(label).fontSize(12).fontWeight(FontWeight.Medium).fontColor(this.ink())
       TextInput({ text: value, placeholder: placeholder }).type(inputType)
         .height(50).width('100%').fontSize(14).fontColor(this.ink()).placeholderColor(this.mutedInk())
-        .backgroundColor(this.surface()).borderRadius(13).padding({ left: 15, right: 15 })
+        .padding({ left: 16, right: 16 })
         .caretColor('#268BDE').onChange(change).onSubmit(() => this.startLogin())
         .accessibilityText(label)
     }.width('100%').alignItems(HorizontalAlign.Start)
@@ -2262,121 +2080,12 @@ struct Index {
 
   @Builder
   private accountPage() {
-    Column() {
-      this.pageHeader('Telegram 账号')
-      if (this.accountProfiles.some((item: AccountProfile) => item.id !== this.activeAccountId)) {
-        Row({ space: 8 }) {
-          ForEach(this.accountProfiles.filter((item: AccountProfile) => item.id !== this.activeAccountId), (account: AccountProfile) => {
-            Button({ type: ButtonType.Normal }) {
-              Row({ space: 8 }) {
-                this.avatar(account.avatar || account.name.slice(0, 1), account.color || '#78A5D8', 30, false, account.avatarPath || '')
-                Text(account.name).fontSize(13).fontColor(this.ink()).maxLines(1)
-              }.padding({ left: 10, right: 10 })
-            }.height(46).backgroundColor(this.surface()).borderRadius(23)
-              .onClick(() => this.changeAccount(account.id)).enabled(!this.accountSwitching)
-          }, (account: AccountProfile) => account.id)
-        }.padding(8).width('100%')
-      }
-      Scroll() {
-        Column({ space: 18 }) {
-          Column() { this.brandLogo(84, 24) }.margin({ top: 25, bottom: 8 })
-          Text(this.authTitle()).fontSize(26).fontWeight(FontWeight.Bold).fontColor(this.ink()).textAlign(TextAlign.Center)
-          Text(this.authHint()).fontSize(13).fontColor(this.mutedInk()).lineHeight(23).textAlign(TextAlign.Center)
-            .width('100%').margin({ bottom: 12 })
-          if (this.telegram.ready) {
-            Row({ space: 8 }) {
-              Text('').width(7).height(7).backgroundColor('#54C69E').borderRadius(4)
-              Text(this.telegram.connection || '账号已就绪').fontSize(13).fontColor(this.ink())
-            }.width('100%').padding(20).backgroundColor(this.surface()).borderRadius(16)
-            Button('进入聊天').fontSize(15).fontColor('#FFFFFF').height(50).width('100%')
-              .backgroundColor('#268BDE').borderRadius(15).onClick(() => { this.page = 'home'; this.currentTab = 0; })
-          } else if (this.telegram.phase === 'starting' && this.telegram.error.length === 0 && this.localError.length === 0) {
-            LoadingProgress().width(40).height(40).color('#268BDE').margin({ top: 30, bottom: 30 })
-          } else {
-            if (this.telegram.phase === 'phone') {
-              this.phoneNumberFields()
-            } else if (this.telegram.phase === 'code') {
-              this.authField('Telegram 验证码', '输入收到的验证码', this.authCode, InputType.Normal, (value: string) => this.authCode = value)
-            } else if (this.telegram.phase === 'registration') {
-              this.authField('名字', '必填', this.registrationFirst, InputType.Normal, (value: string) => this.registrationFirst = value)
-              this.authField('姓氏', '选填', this.registrationLast, InputType.Normal, (value: string) => this.registrationLast = value)
-              if ((this.telegram.termsText || '').length > 0) {
-                Scroll() { Text(this.telegram.termsText || '').fontSize(13).fontColor(this.ink()).width('100%') }
-                  .width('100%').constraintSize({ maxHeight: 220 })
-              }
-              Hyperlink('https://telegram.org/tos', 'Telegram 服务条款')
-              if ((this.telegram.minAge || 0) > 0) {
-                Text(`最低年龄：${this.telegram.minAge} 岁`).fontSize(12).fontColor(this.mutedInk())
-              }
-              Row({ space: 8 }) {
-                Checkbox().select(this.registrationAccepted).onChange((value: boolean) => this.registrationAccepted = value)
-                Text('我已阅读并同意条款，且符合最低年龄要求').fontSize(12).fontColor(this.ink()).layoutWeight(1)
-              }.width('100%')
-            } else if (this.telegram.phase === 'password') {
-              this.authField('两步验证密码', '输入你的云密码', this.password, InputType.Password, (value: string) => this.password = value)
-            } else if (this.telegram.phase === 'email') {
-              this.authField('电子邮箱', 'name@example.com', this.email, InputType.Email, (value: string) => this.email = value)
-            } else if (this.telegram.phase === 'emailCode') {
-              this.authField('邮箱验证码', '输入邮件中的验证码', this.emailCode, InputType.Normal, (value: string) => this.emailCode = value)
-            } else if (this.showDeveloperConfig) {
-              this.authField('API ID', 'Telegram 应用 API ID', this.apiId, InputType.Number, (value: string) => this.apiId = value)
-              this.authField('API Hash', '32 位应用密钥', this.apiHash, InputType.Password, (value: string) => this.apiHash = value)
-              Text('应用配置可在 my.telegram.org 的 API development tools 中获取。配置安全保存在此设备，验证码和密码不会持久保存。')
-                .fontSize(11).fontColor(this.mutedInk()).lineHeight(20).width('100%')
-            }
-            if (this.telegram.phase === 'code' || this.telegram.phase === 'emailCode') {
-              Button((this.telegram.resendSeconds || 0) > 0 ? `${this.telegram.resendSeconds} 秒后可重发` : '未收到验证码？重新发送')
-                .fontSize(13).backgroundColor(Color.Transparent).fontColor('#268BDE')
-                .enabled(this.telegram.canResend === true).onClick(() => telegramService.resendCode())
-              if (this.telegram.phase === 'code' && !this.telegram.nextDelivery) {
-                Text('Telegram 暂未提供其他发送方式，请确认号码并稍后重试。').fontSize(12).fontColor(this.mutedInk())
-              }
-            }
-            if (this.localError.length > 0 || this.telegram.error.length > 0) {
-              Text(this.telegram.error.length > 0 ? this.telegram.error : this.localError).fontSize(12).fontColor('#D56464')
-                .lineHeight(21).width('100%').padding(15)
-                .backgroundColor(this.darkMode ? '#39272D' : '#FFF0F0').borderRadius(12)
-            }
-            if (this.telegram.phase !== 'unsupported' || this.showDeveloperConfig) {
-              Button(this.authSubmitting ? '正在处理…' : (this.telegram.phase === 'storageRecovery' ? '重新登录' :
-                (this.telegram.phase === 'registration' ? '同意并创建账号' : (this.telegram.phase === 'password' ? '验证并登录' : '继续'))))
-                .fontSize(15).fontWeight(FontWeight.Medium).fontColor('#FFFFFF')
-                .height(50).width('100%').backgroundColor('#268BDE').borderRadius(15)
-                .enabled(!this.authSubmitting).onClick(() => this.startLogin())
-            }
-          }
-          if (!this.telegram.ready && (this.telegram.phase === 'idle' || this.telegram.phase === 'error' ||
-            this.telegram.phase === 'closed' || this.telegram.phase === 'unsupported')) {
-            Button(this.showDeveloperConfig ? '收起开发者配置' : '开发者配置（可选）').fontSize(12).fontColor('#268BDE')
-              .height(36).backgroundColor(Color.Transparent)
-              .onClick(() => { this.showDeveloperConfig = !this.showDeveloperConfig; this.localError = ''; })
-          }
-          if (this.telegram.phase === 'code' || this.telegram.phase === 'emailCode' || this.telegram.phase === 'registration' || this.telegram.phase === 'password') {
-            Button('更换手机号').fontSize(13).backgroundColor(Color.Transparent).fontColor('#268BDE')
-              .enabled(!this.authSubmitting).onClick(() => telegramService.editPhone())
-          }
-          Blank().height(24)
-        }.width('100%').constraintSize({ maxWidth: 480 }).padding({ left: 26, right: 26 })
-      }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)
-    }.width('100%').height('100%').backgroundColor(this.pageBackground())
+    HdsPage({ title: 'Telegram 账号', dark: this.darkMode, onBack: () => this.goBack(), content: () => { this.accountBody() } }).width('100%').height('100%').backgroundColor(this.pageBackground())
   }
 
   @Builder
   private aboutPage() {
-    Column() {
-      this.pageHeader('关于 Harlgram')
-      Scroll() {
-        Column({ space: 20 }) {
-          Column() { this.brandLogo(86, 24) }.margin({ top: 28 })
-          Text('Harlgram').fontSize(28).fontWeight(FontWeight.Medium).fontColor(this.ink())
-          Text('版本 1.0.0').fontSize(12).fontColor(this.mutedInk())
-          Text('基于 Telegram 服务的 HarmonyOS 原生客户端。第三方独立项目，与 Telegram 官方无隶属关系。')
-            .fontSize(14).fontColor(this.mutedInk()).lineHeight(24).width('100%').margin({ top: 12 })
-          Text('离线预览使用虚构联系人，消息仅保存在本机。')
-            .fontSize(13).fontColor(this.mutedInk()).lineHeight(22).width('100%')
-        }.width('100%').constraintSize({ maxWidth: 480 }).padding({ left: 28, right: 28, bottom: 32 })
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off).align(Alignment.Top)
-    }.width('100%').height('100%').backgroundColor(this.surface())
+    HdsPage({ title: '关于 Harlgram', surface: true, dark: this.darkMode, onBack: () => this.goBack(), content: () => { this.aboutBody() } }).width('100%').height('100%').backgroundColor(this.surface())
   }
 
   @Builder
@@ -2427,6 +2136,259 @@ struct Index {
       .navDestination(this.destinationContent).expandSafeArea([], [])
       .width('100%').height('100%').backgroundColor(this.pageBackground())
       .onAppear(() => { this.syncNavigation(); })
+  }
+
+  @Builder
+  private chatsBody() {
+      this.filterBar()
+      if (this.isTelegram && this.telegram.connection.length > 0 && this.telegram.connection !== '已连接') {
+        Text(this.telegram.connection).fontSize(12).fontColor(this.mutedInk())
+          .width('100%').padding({ top: 7, bottom: 7 }).textAlign(TextAlign.Center)
+      }
+      List() {
+        if (this.filteredChats().length === 0) {
+          ListItem() {
+            this.emptyState(this.selectedFilter === 1 ? '没有未读消息' : '没有找到会话', '可从联系人开始聊天')
+          }
+        }
+        ForEach(this.filteredChats(), (chat: ChatSummary) => {
+          ListItem() { this.chatRow(chat) }
+        }, (chat: ChatSummary) => this.chatRenderKey(chat))
+      }.layoutWeight(1).width('100%').edgeEffect(EdgeEffect.Spring)
+        .divider({ strokeWidth: 0.5, color: this.line(), startMargin: 82, endMargin: 16 }).contentEndOffset(84)
+        .scrollBar(BarState.Off)
+        .onReachEnd(() => {
+          if (this.isTelegram && !this.chatSearchVisible && this.currentTab === 0 && this.page === 'home') {
+            telegramService.loadMoreChats();
+          }
+        })
+
+  }
+
+  @Builder
+  private contactsBody() {
+      this.contactsSearchBox()
+      List() {
+        if (this.filteredContacts().length === 0) {
+          ListItem() { this.emptyState('没有找到联系人', '请尝试其他姓名或关键词') }
+        }
+        ForEach(this.filteredContacts(), (contact: Contact) => {
+          ListItem() {
+            Row({ space: 12 }) {
+              this.avatar(contact.avatar, contact.color, 46, contact.online, contact.avatarPath || '')
+              Column({ space: 6 }) {
+                Text(contact.name).fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.ink())
+                  .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+                Text(contact.subtitle).fontSize(12).fontColor(this.mutedInk()).maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+              }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+            }.width('100%').padding({ left: 16, right: 16, top: 14, bottom: 14 })
+              .onClick(() => this.openContact(contact)).accessibilityText(`与${contact.name}开始会话`)
+          }
+        }, (contact: Contact) => this.contactRenderKey(contact))
+      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+        .divider({ strokeWidth: 0.5, color: this.line(), startMargin: 74, endMargin: 16 }).contentEndOffset(84)
+
+  }
+
+  @Builder
+  private settingsBody() {
+    Scroll() {
+      Column() {
+        Column({ space: 16 }) {
+          Row({ space: 15 }) {
+            this.avatar(this.currentUser?.avatar || '我', this.currentUser?.color || '#78A5D8', 44, false, this.currentUser?.avatarPath || '')
+            Column({ space: 7 }) {
+              Text(this.isTelegram ? (this.currentUser?.name || 'Telegram') : '离线预览')
+                .fontSize(17).fontWeight(FontWeight.Medium).fontColor(this.ink())
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text(this.isTelegram ? '已登录' : '消息仅保存在本机').fontSize(11).fontColor(this.mutedInk())
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+          }.width('100%')
+          if (!this.isTelegram) {
+            Button({ type: ButtonType.Normal }) {
+              Row({ space: 8 }) {
+                this.icon($r('app.media.hg_send_blue'), 17)
+                Text('登录 Telegram').fontSize(13).fontWeight(FontWeight.Medium).fontColor('#268BDE')
+                Blank()
+                this.icon($r('app.media.hg_chevron_blue'), 15)
+              }.width('100%')
+            }.height(42).width('100%').backgroundColor(this.softBlue()).borderRadius(11)
+              .onClick(() => this.enterAccount())
+          }
+        }.width('100%').padding(16).backgroundColor(this.surface()).borderRadius(16)
+        if (this.isTelegram) {
+          Column() {
+            this.settingRow($r('app.media.hg_group'), '账户管理', '', () => {
+              this.accountProfiles = telegramService.accounts();
+              this.activeAccountId = telegramService.activeAccount();
+              this.page = 'accounts';
+            })
+          }.width('100%').backgroundColor(this.surface()).borderRadius(17).margin({ top: 16 })
+        }
+        if (this.isTelegram) {
+          this.sectionLabel('数据与存储')
+          Column() {
+            this.settingRow($r('app.media.hg_globe_blue'), '存储管理', '', () => { this.storageRoute = 'storage'; this.page = 'storage'; })
+          }.width('100%').backgroundColor(this.surface()).borderRadius(17)
+        }
+        this.sectionLabel('个性化')
+        Column() {
+          HdsSettingsRow({ title: '外观', value: this.appearanceLabel(), icon: $r('app.media.hg_moon_blue'), action: () => this.chooseAppearance() })
+        }.width('100%').backgroundColor(this.surface()).borderRadius(17)
+        this.sectionLabel('账号与数据')
+        Column() {
+          this.settingRow($r('app.media.hg_bookmark_blue'), '收藏夹', '', () => this.openSavedMessages())
+          Divider().color(this.line()).margin({ left: 62, right: 17 })
+          this.settingRow($r('app.media.hg_globe_blue'), '连接状态',
+            this.isTelegram ? (this.telegram.connection || '连接中') : '离线预览', () => this.enterAccount())
+        }.width('100%').backgroundColor(this.surface()).borderRadius(17)
+        if (this.isTelegram) {
+          Button('退出 Telegram 账号').buttonStyle(ButtonStyleMode.TEXTUAL).role(ButtonRole.ERROR).height(46).width('100%').margin({ top: 18 })
+            .onClick(() => this.confirmLogOut())
+        }
+        this.sectionLabel('关于')
+        Column() {
+          this.settingRow($r('app.media.hg_info_blue'), '关于 Harlgram', '1.0.0', () => this.openAbout())
+        }.width('100%').backgroundColor(this.surface()).borderRadius(17)
+      }.width('100%').padding({ left: 16, right: 16, bottom: 100 })
+    }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.TopStart).backgroundColor(this.pageBackground())
+
+  }
+
+  @Builder
+  private accountsBody() {
+      Scroll() {
+        Column({ space: 16 }) {
+          Column() {
+            ForEach(this.accountProfiles, (account: AccountProfile) => {
+              this.accountRow(account)
+            }, (account: AccountProfile) => account.id)
+          }.width('100%').backgroundColor(this.surface()).borderRadius(17)
+          Column() {
+            this.settingRow($r('app.media.hg_edit_blue'), '添加账户', '', () => this.changeAccount())
+          }.width('100%').backgroundColor(this.surface()).borderRadius(17).enabled(!this.accountSwitching)
+          if (this.telegram.error.length > 0) {
+            Text(this.telegram.error).fontSize(13).fontColor('#D56464').width('100%')
+          }
+        }.width('100%').padding(16)
+      }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.TopStart)
+
+  }
+
+  @Builder
+  private accountBody() {
+      if (this.accountProfiles.some((item: AccountProfile) => item.id !== this.activeAccountId)) {
+        Row({ space: 8 }) {
+          ForEach(this.accountProfiles.filter((item: AccountProfile) => item.id !== this.activeAccountId), (account: AccountProfile) => {
+            Button({ type: ButtonType.Normal }) {
+              Row({ space: 8 }) {
+                this.avatar(account.avatar || account.name.slice(0, 1), account.color || '#78A5D8', 30, false, account.avatarPath || '')
+                Text(account.name).fontSize(13).fontColor(this.ink()).maxLines(1)
+              }.padding({ left: 10, right: 10 })
+            }.height(46).backgroundColor(this.surface()).borderRadius(23)
+              .onClick(() => this.changeAccount(account.id)).enabled(!this.accountSwitching)
+          }, (account: AccountProfile) => account.id)
+        }.padding(8).width('100%')
+      }
+      Scroll() {
+        Column({ space: 18 }) {
+          Column() { this.brandLogo(84, 24) }.margin({ top: 25, bottom: 8 })
+          Text(this.authTitle()).fontSize(26).fontWeight(FontWeight.Bold).fontColor(this.ink()).textAlign(TextAlign.Center)
+          Text(this.authHint()).fontSize(13).fontColor(this.mutedInk()).lineHeight(23).textAlign(TextAlign.Center)
+            .width('100%').margin({ bottom: 12 })
+          if (this.telegram.ready) {
+            Row({ space: 8 }) {
+              Text('').width(7).height(7).backgroundColor('#54C69E').borderRadius(4)
+              Text(this.telegram.connection || '账号已就绪').fontSize(13).fontColor(this.ink())
+            }.width('100%').padding(20).backgroundColor(this.surface()).borderRadius(16)
+            Button('进入聊天').fontSize(15).fontColor('#FFFFFF').height(50).width('100%')
+              .buttonStyle(ButtonStyleMode.EMPHASIZED).onClick(() => { this.page = 'home'; this.currentTab = 0; })
+          } else if (this.telegram.phase === 'starting' && this.telegram.error.length === 0 && this.localError.length === 0) {
+            LoadingProgress().width(40).height(40).color('#268BDE').margin({ top: 30, bottom: 30 })
+          } else {
+            if (this.telegram.phase === 'phone') {
+              this.phoneNumberFields()
+            } else if (this.telegram.phase === 'code') {
+              this.authField('Telegram 验证码', '输入收到的验证码', this.authCode, InputType.Normal, (value: string) => this.authCode = value)
+            } else if (this.telegram.phase === 'registration') {
+              this.authField('名字', '必填', this.registrationFirst, InputType.Normal, (value: string) => this.registrationFirst = value)
+              this.authField('姓氏', '选填', this.registrationLast, InputType.Normal, (value: string) => this.registrationLast = value)
+              if ((this.telegram.termsText || '').length > 0) {
+                Scroll() { Text(this.telegram.termsText || '').fontSize(13).fontColor(this.ink()).width('100%') }
+                  .width('100%').constraintSize({ maxHeight: 220 })
+              }
+              Hyperlink('https://telegram.org/tos', 'Telegram 服务条款')
+              if ((this.telegram.minAge || 0) > 0) {
+                Text(`最低年龄：${this.telegram.minAge} 岁`).fontSize(12).fontColor(this.mutedInk())
+              }
+              Row({ space: 8 }) {
+                Checkbox().select(this.registrationAccepted).onChange((value: boolean) => this.registrationAccepted = value)
+                Text('我已阅读并同意条款，且符合最低年龄要求').fontSize(12).fontColor(this.ink()).layoutWeight(1)
+              }.width('100%')
+            } else if (this.telegram.phase === 'password') {
+              this.authField('两步验证密码', '输入你的云密码', this.password, InputType.Password, (value: string) => this.password = value)
+            } else if (this.telegram.phase === 'email') {
+              this.authField('电子邮箱', 'name@example.com', this.email, InputType.Email, (value: string) => this.email = value)
+            } else if (this.telegram.phase === 'emailCode') {
+              this.authField('邮箱验证码', '输入邮件中的验证码', this.emailCode, InputType.Normal, (value: string) => this.emailCode = value)
+            } else if (this.showDeveloperConfig) {
+              this.authField('API ID', 'Telegram 应用 API ID', this.apiId, InputType.Number, (value: string) => this.apiId = value)
+              this.authField('API Hash', '32 位应用密钥', this.apiHash, InputType.Password, (value: string) => this.apiHash = value)
+              Text('应用配置可在 my.telegram.org 的 API development tools 中获取。配置安全保存在此设备，验证码和密码不会持久保存。')
+                .fontSize(11).fontColor(this.mutedInk()).lineHeight(20).width('100%')
+            }
+            if (this.telegram.phase === 'code' || this.telegram.phase === 'emailCode') {
+              Button((this.telegram.resendSeconds || 0) > 0 ? `${this.telegram.resendSeconds} 秒后可重发` : '未收到验证码？重新发送')
+                .fontSize(13).buttonStyle(ButtonStyleMode.TEXTUAL).fontColor('#268BDE')
+                .enabled(this.telegram.canResend === true).onClick(() => telegramService.resendCode())
+              if (this.telegram.phase === 'code' && !this.telegram.nextDelivery) {
+                Text('Telegram 暂未提供其他发送方式，请确认号码并稍后重试。').fontSize(12).fontColor(this.mutedInk())
+              }
+            }
+            if (this.localError.length > 0 || this.telegram.error.length > 0) {
+              Text(this.telegram.error.length > 0 ? this.telegram.error : this.localError).fontSize(12).fontColor('#D56464')
+                .lineHeight(21).width('100%').padding(15)
+                .backgroundColor(this.darkMode ? '#39272D' : '#FFF0F0').borderRadius(12)
+            }
+            if (this.telegram.phase !== 'unsupported' || this.showDeveloperConfig) {
+              Button(this.authSubmitting ? '正在处理…' : (this.telegram.phase === 'storageRecovery' ? '重新登录' :
+                (this.telegram.phase === 'registration' ? '同意并创建账号' : (this.telegram.phase === 'password' ? '验证并登录' : '继续'))))
+                .fontSize(15).fontWeight(FontWeight.Medium).fontColor('#FFFFFF')
+                .height(50).width('100%').buttonStyle(ButtonStyleMode.EMPHASIZED)
+                .enabled(!this.authSubmitting).onClick(() => this.startLogin())
+            }
+          }
+          if (!this.telegram.ready && (this.telegram.phase === 'idle' || this.telegram.phase === 'error' ||
+            this.telegram.phase === 'closed' || this.telegram.phase === 'unsupported')) {
+            Button(this.showDeveloperConfig ? '收起开发者配置' : '开发者配置（可选）').fontSize(12).fontColor('#268BDE')
+              .height(36).buttonStyle(ButtonStyleMode.TEXTUAL)
+              .onClick(() => { this.showDeveloperConfig = !this.showDeveloperConfig; this.localError = ''; })
+          }
+          if (this.telegram.phase === 'code' || this.telegram.phase === 'emailCode' || this.telegram.phase === 'registration' || this.telegram.phase === 'password') {
+            Button('更换手机号').fontSize(13).buttonStyle(ButtonStyleMode.TEXTUAL).fontColor('#268BDE')
+              .enabled(!this.authSubmitting).onClick(() => telegramService.editPhone())
+          }
+          Blank().height(24)
+        }.width('100%').constraintSize({ maxWidth: 480 }).padding({ left: 26, right: 26 })
+      }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)
+
+  }
+
+  @Builder
+  private aboutBody() {
+      Scroll() {
+        Column({ space: 20 }) {
+          Column() { this.brandLogo(86, 24) }.margin({ top: 28 })
+          Text('Harlgram').fontSize(28).fontWeight(FontWeight.Medium).fontColor(this.ink())
+          Text('版本 1.0.0').fontSize(12).fontColor(this.mutedInk())
+          Text('基于 Telegram 服务的 HarmonyOS 原生客户端。第三方独立项目，与 Telegram 官方无隶属关系。')
+            .fontSize(14).fontColor(this.mutedInk()).lineHeight(24).width('100%').margin({ top: 12 })
+          Text('离线预览使用虚构联系人，消息仅保存在本机。')
+            .fontSize(13).fontColor(this.mutedInk()).lineHeight(22).width('100%')
+        }.width('100%').constraintSize({ maxWidth: 480 }).padding({ left: 28, right: 28, bottom: 32 })
+      }.layoutWeight(1).width('100%').scrollBar(BarState.Off).align(Alignment.Top)
+
   }
 
   build() {

@@ -32,7 +32,7 @@ Harlgram 使用 ArkTS / ArkUI、C++ Node-API 和 TDLib 接入 Telegram。功能�
 
 ## 目前可以做什么
 
-以下是截至 **2026-10-31** 的能力摘要。实现、宿主机测试、SDK 编译、设备运行和服务端同步是不同层次的证据，详细记录见 [当前状态](docs/STATUS.md) 与 [Web A 对齐清单](docs/TELEGRAM_WEB_PARITY.md)。
+以下是截至 **2026-11-01** 的能力摘要。实现、宿主机测试、SDK 编译、设备运行和服务端同步是不同层次的证据，详细记录见 [当前状态](docs/STATUS.md) 与 [Web A 对齐清单](docs/TELEGRAM_WEB_PARITY.md)。
 
 | 能力 | 当前范围与验证边界 |
 | --- | --- |

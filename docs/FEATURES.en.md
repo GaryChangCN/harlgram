@@ -1,6 +1,6 @@
 # Available features
 
-Updated: 2026-10-31. Harlgram is an actively developed native third-party Telegram client for HarmonyOS NEXT. It does not yet have full Telegram Web A parity. See the [roadmap](ROADMAP.en.md), [changelog](../CHANGELOG.en.md), and detailed [Web A parity matrix](TELEGRAM_WEB_PARITY.md).
+Updated: 2026-11-01. Harlgram is an actively developed native third-party Telegram client for HarmonyOS NEXT. It does not yet have full Telegram Web A parity. See the [roadmap](ROADMAP.en.md), [changelog](../CHANGELOG.en.md), and detailed [Web A parity matrix](TELEGRAM_WEB_PARITY.md).
 
 ## Reading the status
 
@@ -18,7 +18,7 @@ Implemented means real protocol behavior and native interactions exist. Device-v
 | Photos and albums | Up to 10 system-selected photos/videos, caption/removal, album sending/grid, browsing, zoom and confirmed export | Mixed albums in both directions, standalone video, export and double-tap zoom | Originals, quality/editing/reordering, HEIF, continuous pinch and more failure cases remain |
 | Video player | Native progressive AVPlayer streaming and uncached seeking/resume; ±30 seconds, seven speeds, temporary 2× hold with rate restoration, tap/double-tap/swipe, controls, mute and background pause | Cold-cache 150-second H.264/AAC MP4, remote seeks, playback through chunks to completion, 1.5×→2×→1.5× and skip controls on device | More codecs/non-faststart/weak-network/call-interruption cases, PiP, subtitles/tracks and quality switching remain |
 | Storage and traffic | Per-active-account category/chat clearing, retention/cap, network-specific photo/video/animation limits, traffic totals | Real statistics, selective clearing, video re-fetch and preference retention | Maintenance requires a running process; inactive accounts, upload staging, contact exceptions and automatic gallery saving remain |
-| Native appearance | ArkUI, system menus/sheets, glass tabs, light/dark/system and safe areas | Preference retention and system-following on device | Complete accessibility, large text and every system scenario need separate validation |
+| Native appearance | HDS titles/settings rows for settings, accounts, storage pages; original compact chat details; system menus/sheets, glass tabs, light/dark/system and safe areas | Page returns, keyboard/draft retention, appearance persistence and system-following on device | Complete accessibility, large text and every system scenario need separate validation |
 | Folding and large screens | Width-based design with an unfolded two-pane static capture | Privacy-redacted device illustration | Full folding/rotation/multi-window continuity not accepted; folded form comes first |
 | Offline preview | Fictional local fixtures isolated from real accounts | Domain/UI development | Local changes are not cloud delivery |
 
@@ -33,6 +33,6 @@ Notifications remain roadmap work. Do not depend on the preview for important no
 
 ## Verification baseline
 
-This batch has 316 host tests, a real SDK 26 signed build, and update-install/launch evidence on the designated device. These are not full-feature acceptance. Details: [accounts](MULTI_ACCOUNT.md), [display](MESSAGE_DISPLAY.md), [media](MEDIA.md), [video](VIDEO_PLAYER.md), [storage](STORAGE_MANAGEMENT.md), [status](STATUS.md).
+This batch has 339 host tests, a real SDK 26 signed build, and update-install/launch evidence on the designated device. These are not full-feature acceptance. Details: [accounts](MULTI_ACCOUNT.md), [display](MESSAGE_DISPLAY.md), [media](MEDIA.md), [video](VIDEO_PLAYER.md), [storage](STORAGE_MANAGEMENT.md), [status](STATUS.md).
 
 Public pages use reviewed assets and synthetic-test descriptions only, without private conversations, phone numbers, device serials, deployment credentials or raw screenshots.

@@ -32,7 +32,7 @@ Harlgram connects to Telegram through ArkTS / ArkUI, a C++ Node-API bridge, and 
 
 ## What works today
 
-This summary reflects evidence recorded on **2026-10-31**. Implementation, host tests, SDK compilation, device behavior, and server synchronization are separate levels of evidence. See [current status](docs/STATUS.md) and the [Web A parity matrix](docs/TELEGRAM_WEB_PARITY.md) for the detailed scope. Most engineering documents are currently in Chinese.
+This summary reflects evidence recorded on **2026-11-01**. Implementation, host tests, SDK compilation, device behavior, and server synchronization are separate levels of evidence. See [current status](docs/STATUS.md) and the [Web A parity matrix](docs/TELEGRAM_WEB_PARITY.md) for the detailed scope. Most engineering documents are currently in Chinese.
 
 | Area | Current scope and limits |
 | --- | --- |

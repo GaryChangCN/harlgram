@@ -2,6 +2,18 @@
 
 This records source changes, not an installable HAP release. See [features](docs/FEATURES.en.md) for current scope and evidence, and the [roadmap](docs/ROADMAP.en.md) for plans. [中文](CHANGELOG.md).
 
+## Unreleased · 2026-11-01
+
+### Changed and fixed
+
+- HDS native titles, settings rows and button hierarchy for settings, accounts and storage pages, with improved search, selection and back navigation. AGENTS.md links the shared design guidelines.
+- Chat details retain the original avatar, compact header and expandable conversation actions, preserving navigation, messages, drafts and media layout.
+
+### Validation and limitations
+
+- Navigation, keyboard handling and original-draft retention have designated-device evidence. Other window forms, large text and complete accessibility require separate validation.
+- Website features, roadmap and bilingual changelog are regenerated together. This is a source preview, not a HAP release.
+
 ## Unreleased · 2026-10-31
 
 ### Added
