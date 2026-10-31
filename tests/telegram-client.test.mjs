@@ -40,7 +40,7 @@ class FakeTransport {
 function fixture({ ready = false } = {}) {
   const transport = new FakeTransport();
   const repository = new ChatRepository();
-  const client = new TelegramClient(transport, repository);
+  const client = new TelegramClient(transport, repository); client.setMediaNetwork('wifi');
   client.start(params);
   if (ready) authorize(transport, client, 'Ready');
   return { transport, repository, client };
@@ -478,4 +478,78 @@ test('a rejected send never overwrites a newer full-length draft or truncates fa
   client.drain();
   assert.equal(repository.getDraft('101'), newer);
   assert.ok(repository.getMessages('101').some(item => item.text === previous && item.status === 'failed'));
+});
+
+test('initialization timeout ends the endless connecting state', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1000 });
+  const { client } = fixture();
+  t.mock.timers.tick(30001); client.drain();
+  assert.equal(client.state().phase, 'error');
+  assert.match(client.state().error, /连接超时/);
+});
+
+test('authentication timeout releases submit protection without sending another code request', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1000 });
+  const { client, transport } = fixture(); authorize(transport, client, 'WaitPhoneNumber');
+  client.setPhone('+12025550123');
+  assert.equal(client.state().submitting, true);
+  t.mock.timers.tick(30001); client.drain();
+  assert.equal(client.state().submitting, false);
+  assert.match(client.state().error, /请求超时/);
+  assert.equal(transport.requests.filter(r => r['@type'] === 'setAuthenticationPhoneNumber').length, 1);
+  client.setPhone('+12025550123');
+  assert.equal(client.state().submitting, true);
+});
+
+test('late error from an expired authentication request cannot unlock or overwrite its retry', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1000 });
+  const { client, transport } = fixture(); authorize(transport, client, 'WaitPhoneNumber');
+  client.setPhone('+12025550123'); const old = transport.last('setAuthenticationPhoneNumber')['@extra'];
+  t.mock.timers.tick(30001); client.drain(); client.setPhone('+12025550123');
+  transport.push({ '@type': 'error', '@extra': old, code: 400, message: 'PHONE_NUMBER_INVALID' }); client.drain();
+  assert.equal(client.state().submitting, true); assert.equal(client.state().error, '');
+});
+
+test('authentication server failures immediately release the submit button and expose a readable error', () => {
+  const { client, transport } = fixture(); authorize(transport, client, 'WaitCode');
+  client.setCode('12345');
+  transport.push({ '@type': 'error', '@extra': transport.last('checkAuthenticationCode')['@extra'], code: 400, message: 'PHONE_CODE_INVALID' }); client.drain();
+  assert.equal(client.state().submitting, false); assert.match(client.state().error, /验证码不正确/);
+});
+
+test('registration is offered only after Telegram requests it and requires explicit terms acceptance', () => {
+  const { client, transport } = fixture();
+  client.register('Example', '', true);
+  assert.equal(transport.last('registerUser'), undefined);
+  transport.push({ '@type': 'updateAuthorizationState', authorization_state: { '@type': 'authorizationStateWaitRegistration', terms_of_service: { text: { '@type': 'formattedText', text: 'Synthetic terms', entities: [] }, min_user_age: 18, show_popup: true } } }); client.drain();
+  assert.equal(client.state().phase, 'registration');assert.equal(client.state().minAge,18);assert.equal(client.state().termsText,'Synthetic terms');
+  client.register('Example', '', false); assert.equal(transport.last('registerUser'), undefined);
+  client.register('', '', true); assert.equal(transport.last('registerUser'), undefined);
+  client.register('Example', '', true);
+  assert.equal(transport.last('registerUser').disable_notification, true);
+  assert.equal(transport.last('registerUser').first_name, 'Example');
+  const count=transport.requests.length;client.register('Example','',true);assert.equal(transport.requests.length,count);
+  assert.equal(client.state().ready,false);
+});
+
+test('resending follows server next_type and timeout without automatic requests', t => {
+  t.mock.timers.enable({apis:['Date'],now:1000});
+  const { client,transport }=fixture();
+  transport.push({'@type':'updateAuthorizationState',authorization_state:{'@type':'authorizationStateWaitCode',code_info:{type:{'@type':'authenticationCodeTypeTelegramMessage'},next_type:{'@type':'authenticationCodeTypeSms'},timeout:45}}});client.drain();
+  assert.equal(client.state().resendSeconds,45);client.resendCode();assert.equal(transport.last('resendAuthenticationCode'),undefined);
+  t.mock.timers.tick(45000);client.drain();assert.equal(client.state().canResend,true);
+  assert.equal(transport.last('resendAuthenticationCode'),undefined);
+  client.resendCode();assert.equal(transport.last('resendAuthenticationCode').reason,null);
+  const count=transport.requests.length;client.resendCode();assert.equal(transport.requests.length,count);
+});
+
+test('a code step without a server fallback never offers a resend',()=>{
+  const {client,transport}=fixture();authorize(transport,client,'WaitCode');
+  client.resendCode();assert.equal(client.state().canResend,false);assert.equal(transport.last('resendAuthenticationCode'),undefined);
+});
+
+test('changing phone returns to entry without automatically requesting another code',()=>{
+  const {client,transport}=fixture();authorize(transport,client,'WaitCode');const count=transport.requests.length;
+  client.editPhone();assert.equal(client.state().phase,'phone');assert.equal(transport.requests.length,count);
+  client.setPhone('+12025550123');assert.ok(transport.last('setAuthenticationPhoneNumber'));
 });

@@ -18,6 +18,11 @@ export interface ChatSummary {
   avatarFileId?: number;
 }
 
+export interface MessageEntity { offset: number; length: number; type: string; url?: string; }
+export interface MessageLinkPreview { url: string; title: string; description: string; siteName: string; }
+
+export interface RichContentBlock { kind: string; text: string; entities: MessageEntity[]; level: number; media?: ChatMessage; }
+
 export interface ChatMessage {
   id: string;
   chatId: string;
@@ -29,15 +34,48 @@ export interface ChatMessage {
   senderId?: string;
   senderName?: string;
   senderColor?: string;
+  senderAvatarPath?: string;
+  senderAvatarFileId?: number;
+  sourceMessageId?: string;
+  richBlocks?: RichContentBlock[];
+  richTruncated?: boolean;
+  richLoading?: boolean;
+  richError?: string;
+  contactName?: string;
+  contactPhone?: string;
+  contentType?: string;
+  entities?: MessageEntity[];
+  forwardName?: string;
+  linkPreview?: MessageLinkPreview;
+  service?: boolean;
+  read?: boolean;
+  canSave?: boolean;
+  sticker?: boolean;
+  stickerEmoji?: string;
+  stickerPath?: string;
+  stickerFileId?: number;
+  largeEmoji?: boolean;
   mediaPath?: string;
   mediaFileId?: number;
-  mediaKind?: 'photo';
-  contentKind?: 'text' | 'photo' | 'other';
+  mediaKind?: 'photo' | 'video';
+  mediaAlbumId?: string;
+  thumbnailPath?: string;
+  thumbnailFileId?: number;
+  mediaWidth?: number;
+  mediaHeight?: number;
+  mediaDuration?: number;
+  mediaSize?: number;
+  mediaProgress?: number;
+  mediaDownloading?: boolean;
+  mediaError?: string;
+  contentKind?: 'text' | 'photo' | 'video' | 'other';
   caption?: string;
   editDate?: number;
   replyToChatId?: string;
   replyToMessageId?: string;
   replyPreview?: string;
+  replyThumbnailPath?: string;
+  replyThumbnailFileId?: number;
   replySenderName?: string;
 }
 
