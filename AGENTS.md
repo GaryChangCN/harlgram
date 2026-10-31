@@ -7,7 +7,7 @@
 - `README.md`：项目范围与启动入口。
 - `docs/ARCHITECTURE.md`：模块边界与数据流。
 - `docs/AI_WORKFLOW.md`：证据、协作和交付规则。
-- `docs/UI_GUIDELINES.md`：官方 ArkUI、Telegram 核心交互和简洁界面规范。
+- [docs/UI_GUIDELINES.md](docs/UI_GUIDELINES.md)：所有 UI 改动必读的 HDS / ArkUI 设计规范、组件映射、交互约束与逐页验收要求。
 - `docs/RESPONSIVE_VALIDATION.md`：窗口断点、多设备形态与设计/实测验收矩阵。
 - `docs/DEVELOPMENT.md`：DevEco 工具链、脚本与设备使用。
 - `docs/TELEGRAM_SOURCE_MAP.md`、`docs/TELEGRAM_INTEGRATION.md`：上游源码依据与 TDLib 接入约束。
@@ -32,6 +32,7 @@
 | 位置 / 模块 | 职责 |
 | --- | --- |
 | `entry/src/main/ets/pages/Index.ets` | ArkUI 导航、界面状态、用户动作和渲染；不直接调用 TDLib C ABI。 |
+| `entry/src/main/ets/components/HdsPage.ets`、`HdsSettingsRow.ets` | 共用 HDS 标题、操作菜单和设置行呈现；不接管账号、协议、路由来源或持久化。具体约束见 [UI_GUIDELINES.md](docs/UI_GUIDELINES.md)。 |
 | `entry/src/main/ets/model/ChatModels.ts` | 聊天领域类型，保留消息发送状态和账号数据语义。 |
 | `entry/src/main/ets/data/ChatRepository.ts` | 内存会话、消息、草稿与模式边界；本地操作不能伪造云端确认。 |
 | `entry/src/main/ets/data/DemoData.ts` | 明确标注的虚构离线数据，不放真实用户数据。 |
@@ -59,6 +60,10 @@
 
 ## UI 与响应式规则
 
+- 开始任何 UI / UX 改动前，必须阅读并遵守 [独立设计规范](docs/UI_GUIDELINES.md)。已有页面也适用；新增例外须记录具体 SDK / 能力依据和替代方案，不能只因「已用原生组件」就视为采用官方样式。
+- 本机 SDK 已提供相应 HDS 能力时，标准页面优先使用 UIDesignKit 的 HdsNavigation / HdsNavDestination、HdsListItemCard 及官方按钮层级；标题、返回、操作菜单、列表选择与开关由对应组件提供。保留用户意图和 Telegram 数据语义，不再用 Row、图片按钮或固定大胶囊模拟系统导航与设置行。专用媒体全屏页按沉浸场景处理，不强制套通用浮动标题栏。
+- 用户已明确要求聊天详情沿用 HDS 迁移前的样式：保留既有头像、紧凑标题栏、会话操作展开区、消息与输入区，以及 Navigation / NavDestination 返回栈。不要再次以统一 HDS 样式为由替换；设置类页面继续使用 HDS。
+- UI 验收必须包含首屏和滚动后的标题避让、末项/底栏/键盘可达性、浅深色对比度、页面/系统返回、草稿与选择保留；只在已连接指定设备上通过的形态记录为实测。组件选择与当前页面迁移清单持续维护在独立设计规范中，不在 AGENTS.md 重复堆放样式细节。
 - 导航、会话打开与返回、未读、草稿、发送状态遵循 Telegram 核心行为；用官方 ArkUI 组件实现，不机械复制 Android 布局代码。
 - 区分「使用官方基础组件」和「采用官方组件样式」。SDK 已有专用样式时优先使用，例如 API 26 底部导航使用 `Tabs.barFloatingStyle` 与系统 Symbol，不再用通用 modifier 拼接宽高、圆角和背景来冒充官方浮动底栏。视觉效果仍须真机截图验收。
 - 保持界面简洁，不加入宣传口号、重复模式标签或面向开发者的实现说明。保留必要错误、连接、登录和本地模式识别，技术详情放开发文档或明确的开发者入口。
@@ -85,6 +90,7 @@
 - 私密配置、签名、数据库、会话文件、截图中的个人信息、构建日志中的秘密均不得进入 Git。添加文件前检查 `.gitignore` 与实际内容。
 - 只使用开发者自行申请的 API 配置，不内置 Telegram 官方应用或示例凭据。用户把配置写入被忽略的 `config/telegram.local.json`，无需发到聊天；`scripts/configure-telegram.sh` 生成同样被忽略的 `entry/src/main/ets/config/TelegramBuildConfig.ets`。无配置可以构建 smoke/UI 版本，但不能进行手机号鉴权；正式发布必须通过配置检查与 release guard。
 - 项目计划公开源码，提交前检查暂存区和历史中的敏感文件。API 私密文件、生成配置、签名和用户数据不因开源需求而加入 Git。不得为形成提交历史而提交用户的配置。
+- 每次 commit 前必须检查完整暂存区的文件清单和实际内容，确认源码、文档、测试样例、日志及图片中均无隐私或秘密；特别检查手机号、真实消息、账号标识、私人部署域名、Token、Authorization 头、API 凭据、签名和本机绝对路径。示例使用虚构数据或占位符，提交说明也不得包含敏感信息。不能仅依赖 `.gitignore` 或自动扫描；发现泄露先移出暂存区并脱敏，再重新检查，通过后才能提交。
 
 ## 协作与交付
 

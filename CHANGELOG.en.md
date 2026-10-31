@@ -2,6 +2,27 @@
 
 This records source changes, not an installable HAP release. See [features](docs/FEATURES.en.md) for current scope and evidence, and the [roadmap](docs/ROADMAP.en.md) for plans. [中文](CHANGELOG.md).
 
+## Unreleased · 2026-11-01
+
+### Added
+
+- In-app network and proxy management for up to 32 named relay routes: add, edit, test, select, reconnect and delete. Explicit direct mode retains saved routes.
+- Configurable token headers: `Authorization: Bearer <token>` by default, or the raw token in a custom header; Asset-backed storage with migration from the single-route format.
+- WebSocket tunnel integration and in-app setup guidance covering domains, tokens, headers, deployment prerequisites, testing and selection; no changes to system VPN settings or other apps.
+
+### Changed and fixed
+
+- HDS native titles, settings rows and button hierarchy for settings, accounts, storage and relay pages, with improved search, selection and back navigation. AGENTS.md links the shared design guidelines.
+- Chat details retain the original avatar, compact header and expandable conversation actions, preserving the navigation stack, messages, drafts and media layout.
+- TDLib waits for proxy confirmation before connecting; relay failures do not silently fall back to direct access. Inactive edits do not reconnect; failed validation preserves the active route, and failed persistence attempts connection recovery.
+
+### Validation and limitations
+
+- 339 host tests, a real SDK 26 signed build, and normal device update-install/launch passed. Multi-route management, navigation, keyboard handling and original-draft retention have device evidence.
+- Cloudflare two-way text, photos/videos, progressive playback, seeking and media uploads were verified on the designated device with VPN off as confirmed by the user. This does not cover all networks, codecs or devices.
+- EdgeOne HTTPS and WebSocket upgrade pass, but bidirectional transport still closes with 1006 before the protocol handshake; it is not a validated usable route. Long-session recovery, weak networks, UDP calls and other window forms remain unverified.
+- Website features, roadmap and bilingual changelog are regenerated together. Private relay addresses, credentials and raw screenshots/logs stay excluded. This is a source preview, not a HAP release.
+
 ## Unreleased · 2026-10-31
 
 ### Added

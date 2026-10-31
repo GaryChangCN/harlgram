@@ -106,5 +106,6 @@ export interface TdEvent extends TdType {
 }
 export interface TelegramState { phase: string; error: string; connection: string; ready: boolean; submitting?: boolean; codeDelivery?: string; nextDelivery?: string; resendSeconds?: number; canResend?: boolean; termsText?: string; minAge?: number; }
 export interface TelegramHistoryState { loading: boolean; hasMore: boolean; loaded: boolean; error: string; }
-export interface TelegramParameters { apiId: number; apiHash: string; databaseDirectory: string; filesDirectory: string; encryptionKey: string; }
+export interface TelegramParameters { apiId: number; apiHash: string; databaseDirectory: string; filesDirectory: string; encryptionKey: string;
+  relayProxy?: { server: string; port: number; username: string; password: string; }; }
 export interface TdTransport { createClient(): number; send(clientId: number, request: string): void; receive(): string; }

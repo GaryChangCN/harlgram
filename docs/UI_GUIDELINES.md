@@ -4,6 +4,30 @@
 
 当前先验证手机单栏功能。真机可用时优先真机；用户已明确授权拔掉真机后使用手机模拟器继续测试，结果分开记录。多形态设计目标继续保留，但没有对应真机或用户尚未物理展开设备时，明确标记未验证，不能推断通过。
 
+## 必须遵守的 HDS 组件与交互基线
+
+本文件是项目唯一的常规界面设计入口，由 [AGENTS.md](../AGENTS.md) 强制引用；已有页面、新增页面与修复都适用。依据本机已安装 SDK 26.0.0.105 的官方声明和对应设备实测，不将「HDS 推荐」写成所有场景必须浮动，也不宣称 SDK 版本代表全球最新规范。
+
+| 场景 | 本项目采用的官方能力 | 不继续采用的手工替代 |
+| --- | --- | --- |
+| 常规根页、设置和表单子页 | UIDesignKit HdsNavigation，统一 MINI 标题、返回和操作菜单 | 用 Row + 图片按钮拼整条导航栏 |
+| 聊天详情与返回栈 | 同一 NavPathStack 上的 Navigation / NavDestination，沿用用户指定的原聊天标题栏 | 换样式时重建账号、会话、输入或导航状态 |
+| 设置值、跳转行和开关 | HdsListItemCard，SuffixTextAndArrow / SuffixSwitch | 固定字号、文本箭头、独立拼接假系统开关行 |
+| 普通分组长文 | ArkUI List / ListItemGroupStyle.CARD，正文自适应高度 | 对长文使用固定高度 CARD 行造成裁切 |
+| 主操作、次要操作、文本操作 | ButtonStyleMode.EMPHASIZED / NORMAL / TEXTUAL | 每项都用强调色、固定圆角大按钮 |
+| 搜索 | 官方 Search、取消/清空能力 | TextInput + 图片模拟 Search |
+| 单选/多选 | 官方 Radio / Checkbox，选择与动作分开 | 用字符勾号模拟选择控件 |
+| 消息上下文、常规更多操作 | Menu / MenuItem 或 promptAction.showActionMenu；聊天详情按用户要求保留原操作展开区 | 除已记录的聊天例外外，不用正文按钮模拟菜单 |
+| 确认、选择目标、文件与媒体 | 官方确认框、Sheet、系统 Picker、ContentCover | 自制同类系统流程或在换样式时自动执行操作 |
+| 底部主导航 | 已验证的 API 26 Tabs.barFloatingStyle + 系统材质/Symbol | 手工宽度、圆角和渐变模拟浮动底栏 |
+| 全屏媒体与播放器 | 官方覆盖层、Image / AVPlayer / Slider 与原生手势 | 给沉浸媒体机械套设置页标题栏 |
+
+官方入口：[HdsNavigation](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/ui-design-hdsnavigation)、[HdsNavDestination](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/ui-design-hdsnavdestination)、[HdsListItemCard](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/ui-design-hdslistitemcard)。API 可用性以本机 SDK 的正式声明为准；HDS 导航/列表能力均在当前 API 24 最低版本范围内，不为样式提高最低版本。新 API 仍须单独核验。
+
+标准页面共用 HdsPage 标题容器，设置值共用 HdsSettingsRow；共用组件负责原生样式，不接管账号、请求、页面来源或持久化。常规内容从 MINI 标题栏下方布局，浮动/滚动内容必须显式避让标题、系统栏、键盘和底部导航。聊天详情按用户 2026-11-01 最新要求保留原紧凑标题栏、头像与操作展开区，使用原 Navigation / NavDestination，不套 HDS 浮动标题；保留消息 Scroller 和草稿；Cover 与 Sheet 继续绑定到不同节点。HDS 自定义 Symbol 必须使用语义 icon_primary 等颜色，以免深色标题栏出现黑色返回图标。
+
+每轮交付逐页标注「已改源码」「SDK 编译」「指定设备启动/交互」「真实云端行为」；不因某一个页面使用 HDS 就推断全应用达标。当前设备范围仍是用户指定手机未展开形态；登录中的隐私输入不能为视觉验收代填，持有真实账号的设备不能退出、清数据或装 ohosTest 来制造截图。
+
 ## 功能基准与原生呈现
 
 用户于 2026-10-29 明确指定：完整功能对齐已登录同一账号的 Telegram Web A 手机尺寸，UI/UX 采用鸿蒙官方推荐。首轮参考视口为 390 × 844 CSS px，开启 mobile/touch；这是参考网页的尺寸，不是鸿蒙 vp 断点或阔折叠验收尺寸。
@@ -12,7 +36,7 @@
 
 | 用户意图 | 鸿蒙呈现原则 |
 | --- | --- |
-| 打开聊天、详情、搜索及返回 | 官方 Navigation / NavDestination；返回恢复来源、搜索和阅读位置。 |
+| 打开聊天、详情、搜索及返回 | 官方 Navigation / NavDestination 与 NavPathStack；聊天详情保留用户指定的原样式，返回恢复来源、搜索和阅读位置。 |
 | 操作一条消息 | 官方长按菜单；操作随服务端权限变化，加载失败可重试，不猜测编辑/撤回权限。 |
 | 回复、编辑 | 输入栏上方简洁上下文条；取消恢复原草稿，编辑内容与普通草稿隔离，失败保持输入。 |
 | 选择转发目标 | 官方 Sheet 与 Search / List；明确所选会话，保留发送失败和重试状态。 |
@@ -40,7 +64,7 @@ Web 页面和原生应用的截图、消息及草稿均属于私有联调产物�
 
 应用界面使用官方 ArkUI / ArkTS，优先当前 SDK 的布局、列表、文本输入、导航和无障碍能力。禁止用 Android UI 兼容层、嵌入 Android 页面或 WebView 包装应用主体。原生 C++ / TDLib 负责协议，与选择原生 ArkUI 界面并不冲突。ArkUI 定位见 [华为官方介绍](https://developer.huawei.com/consumer/cn/arkui/)。
 
-新增 API 需同时核对本机声明和工程兼容版本。不要为了调用一个新组件而擅自提高最低系统版本；必要时采用同一官方框架中的兼容实现。官方推荐的 Navigation / NavPathStack 可用于管理页面栈，但组件选择不能改变用户可观察的导航语义。[官方导航说明](https://github.com/openharmony/docs/blob/master/zh-cn/application-dev/ui/arkts-navigation-jump.md)
+新增 API 需同时核对本机声明和工程兼容版本。不要为了调用一个新组件而擅自提高最低系统版本；必要时采用同一官方框架中的兼容实现。官方推荐的 HdsNavigation / NavPathStack 用于管理页面栈，但组件选择不能改变用户可观察的导航语义。[官方导航说明](https://github.com/openharmony/docs/blob/master/zh-cn/application-dev/ui/arkts-navigation-jump.md)
 
 ## Telegram 核心行为
 
@@ -117,3 +141,32 @@ Web 页面和原生应用的截图、消息及草稿均属于私有联调产物�
 以移动端 B 站式意图组织原生播放器：单击显隐、双击播放/暂停、水平滑动预览/提交定位、长按临时 2 倍速/松手恢复原选定倍速；保留可发现的进度、倍速和前后 30 秒按钮。暂停时长按不能偷偷启动播放，定位后恢复用户原先的播放/暂停意图，退后台后回来保持暂停。
 
 控制栏贴播放器容器底部、低干扰渐变；拖动反馈居中、临时倍速提示在上方。用 Stack 的实际子项对齐/满容器覆盖层定位，不把通用 align modifier 当成底部锚定。按钮使用系统 Symbol 与原生 Slider/弹层。缓冲中的目标进度与已确认时钟分开，不能让旧 timeUpdate 把用户刚拖动的预览拉回。所有「通过」以真机 native seekDone/speedDone、画面/时钟推进和手势复验为准。
+
+## 网络和代理管理
+
+使用原生滚动列表展示直接连接与多条代理配置，以「使用中」标识当前项；配置提供编辑、测试、保存、显式选择/重新连接，删除使用系统确认弹层。编辑未启用项不切换当前连接。编辑页将名称、域名、密码态令牌、令牌请求头分开，默认 Authorization；说明 Bearer 与自定义字段原始令牌的区别，不在卡片显示秘密。返回或离开编辑页不隐式保存；处理中禁用相应操作。当前配置需先停用或切换后才能删除，失败不得悄悄改为直连。
+
+管理页与编辑页右上角提供「说明」，原生独立滚动视图解释中转代理、字段示例、测试/保存/选择顺序及部署前提。页面返回与系统返回均先关闭说明、再退出编辑、最后离开管理页；帮助返回保留未保存输入，不触发保存或连接切换；较长说明不常驻主操作列表。
+
+### SDK 26 的中转页面样式
+
+本页导航使用 UIDesignKit 的 `HdsNavigation` / `HdsNavigationTitleMode.MINI`，通过 `titleBar` 配置官方返回和帮助菜单，不再以 Row、圆角按钮和文字拼标题栏。依据本机 SDK 26 声明，MINI 内容起点预留 56 vp；List 使用 `contentStartOffset`，表单滚动区预留对应高度，避免正文与浮动栏重叠。官方参考：[HdsNavigation](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/ui-design-hdsnavigation)。
+
+说明页使用 ArkUI `List` / `ListItemGroupStyle.CARD`，分为简短介绍、三步使用、字段说明和可展开的更多说明；组内内容按实际文本高度排版，不用固定高度 CARD 行裁切长文。文字与分隔线取系统语义资源；页面底色延续现有应用外观，浅深色由已有 WithTheme 生效。编辑/重连采用官方 `ButtonStyleMode.TEXTUAL`，测试使用 NORMAL，保存保留主操作层级。所有「符合」限定已采用的组件 API 和已验证形态，不从 SDK 编译推断完整视觉、无障碍或所有设备符合规范。
+
+## 既有页面 HDS 迁移范围（2026-10-31—2026-11-01）
+
+| 页面/区域 | 本轮源码调整 | 验收边界 |
+| --- | --- | --- |
+| 聊天列表 | 共用 HdsPage，官方新建/搜索图标入口，Tabs / SubTabBarStyle 筛选 | 主列表与搜索结果分别保持原 Scroller / 状态，底栏仍为已验证浮动 Tabs |
+| 联系人 | 共用 HdsPage、官方 Search | 头像、在线状态、真实联系人语义保留 |
+| 设置与外观入口 | HdsPage + HdsSettingsRow / HdsListItemCard | 外观仍用官方三选项菜单，偏好不重置 |
+| 账户管理 | HdsPage、HDS 添加账户行 | 不为视觉验收切换或新增真实账号 |
+| 账号就绪与认证页 | HdsPage、官方按钮层级，保留原生 TextInput / 国家地区 Sheet | 已登录就绪页可实测；手机号/验证码/密码流程不代为提交，不能把就绪页验收当成所有认证阶段通过 |
+| 关于与欢迎页 | 关于采用 HdsPage；欢迎保留启动品牌场景并使用官方主操作按钮 | 品牌启动页不机械增加返回按钮 |
+| 存储、自动下载、网络用量 | HdsPage；设置值用 HDS 行，开关用 SuffixSwitch | 不为演示清缓存、重置网络计数或修改原有自动下载策略 |
+| 聊天详情 | 按用户最新要求恢复迁移前的头像、紧凑标题栏、会话操作展开区和 Navigation / NavDestination；移除 HDS 标题的额外顶部避让 | 保留消息 Scroller、草稿、回复/编辑与媒体；其他设置页的 HDS 调整继续保留 |
+| 转发目标 Sheet | 保留系统 Sheet / Search / List，使用官方 Radio 和主操作按钮 | 选择与最终转发分开，不向其他联系人代发测试内容 |
+| 图片/视频与播放器 | 保留独立 ContentCover、窗口避让、系统选择器和既有原生播放器手势 | 沉浸场景不套普通设置页外壳；Cover 与 Sheet 必须继续使用不同宿主节点 |
+
+消息气泡、相册、用户头像等 Telegram 领域呈现继续由专用组件承担，使用官方基础布局和手势；它们不是通用设置行，不为套用 HdsListItemCard 而丢失回复、剧透、说明、时间、未读或真实发送状态。迁移状态、实际截图与逐项结果以 STATUS.md / RESPONSIVE_VALIDATION.md 为准。

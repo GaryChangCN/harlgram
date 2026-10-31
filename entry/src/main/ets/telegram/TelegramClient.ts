@@ -67,6 +67,10 @@ export class TelegramClient {
   private resendAt = 0;
   private lastResendSeconds = 0;
   private initializationDeadline = 0;
+  private relaySetupRequest = '';
+  private relaySetupDeadline = 0;
+  private relayFailed = false;
+  private relayReady: TdAuthorization | undefined;
   private expiredAuthRequests = new Set<string>();
   private richMessageRequests = new Map<string, RichReadRequest>();
   private replyPreviewRequests = new Map<string, MessageRef>();
@@ -174,6 +178,20 @@ export class TelegramClient {
     this.current = { phase: 'starting', error: '', connection: '连接中', ready: false };
     try {
       this.clientId = this.transport.createClient();
+      this.relaySetupRequest = ''; this.relaySetupDeadline = 0; this.relayFailed = false; this.relayReady = undefined;
+      if (parameters.relayProxy) {
+        // Pinned TDLib queues these preauthentication requests and applies them in
+        // init_options_and_network before ConfigManager starts network activity.
+        this.request('setNetworkType', { type: { '@type': 'networkTypeNone' } });
+        const proxy = parameters.relayProxy;
+        this.relaySetupRequest = this.request('addProxy', { proxy: { '@type': 'proxy', server: proxy.server, port: proxy.port,
+          type: { '@type': 'proxyTypeSocks5', username: proxy.username, password: proxy.password } }, enable: true, comment: 'Harlgram relay' });
+        this.relaySetupDeadline = Date.now() + 30000;
+      } else {
+        // Clear a persisted loopback proxy from a previous process or explicit mode change.
+        this.request('disableProxy');
+        this.request('setNetworkType', { type: { '@type': 'networkTypeOther' } });
+      }
       // TDLib starts delivering the authorization state after its first request.
       this.request('getOption', { name: 'version' });
     } catch {
@@ -276,6 +294,11 @@ export class TelegramClient {
   drain(): void {
     if (this.clientId === 0) { return; }
     let changed = false;
+    if (this.relaySetupRequest && Date.now() >= this.relaySetupDeadline) {
+      this.relaySetupRequest = ''; this.relaySetupDeadline = 0; this.relayFailed = true; this.relayReady = undefined;
+      this.current.ready = false; this.current.phase = 'error'; this.current.error = '中转初始化超时，请检查网络设置后重试';
+      this.request('close'); changed = true;
+    }
     this.managedRequests.forEach((operation, key: string) => {
       if (operation.deadline <= Date.now()) { this.managedRequests.delete(key); operation.reject(new Error('请求超时，请重试')); changed = true; }
     });
@@ -326,10 +349,12 @@ export class TelegramClient {
   }
 
   private authorize(auth: TdAuthorization): void {
-    this.pendingAuthRequest = '';
-    this.current.error = '';
-    this.authDeadline = 0;
     const phase = auth['@type'];
+    if (this.relayFailed && phase !== 'authorizationStateClosed') return;
+    if (this.relaySetupRequest && phase === 'authorizationStateReady') { this.relayReady = auth; return; }
+    this.pendingAuthRequest = '';
+    this.current.error = this.relayFailed ? this.current.error : '';
+    this.authDeadline = 0;
     if (phase !== 'authorizationStateWaitTdlibParameters') { this.initializationDeadline = 0; }
     this.current.codeDelivery = '';
     this.current.nextDelivery = '';
@@ -403,6 +428,18 @@ export class TelegramClient {
   private handle(event: TdEvent): void {
     const type = event['@type'];
     const responseKey = event['@extra'] || '';
+    if (responseKey && responseKey === this.relaySetupRequest) {
+      this.relaySetupRequest = ''; this.relaySetupDeadline = 0;
+      if (type === 'addedProxy') {
+        this.request('setNetworkType', { type: { '@type': 'networkTypeOther' } });
+        const ready = this.relayReady; this.relayReady = undefined; if (ready) this.authorize(ready);
+      } else {
+        this.relayFailed = true; this.relayReady = undefined;
+        this.current.ready = false; this.current.phase = 'error'; this.current.error = '无法启用中转连接，请检查网络设置后重试';
+        this.request('close');
+      }
+      return;
+    }
     if (this.expiredAuthRequests.has(responseKey)) { this.expiredAuthRequests.delete(responseKey); return; }
     if ((type === 'ok' || type === 'error') && responseKey === this.pendingAuthRequest) { this.pendingAuthRequest = ''; this.authDeadline = 0; }
     const operation = this.managedRequests.get(responseKey);
@@ -1574,6 +1611,7 @@ export class TelegramClient {
     }
   }
   logOut(): void { if (this.current.ready) { this.request('logOut'); } }
+  isRunning(): boolean { return this.clientId !== 0; }
   close(): void { if (this.clientId) { this.request('close'); } }
 
   private describeError(message: string, code: number): string {

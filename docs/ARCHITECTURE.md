@@ -118,3 +118,9 @@ DevEco 签名、Telegram 应用 API 配置、Telegram 用户登录是三类独�
 ## 原生视频流与控制
 
 `VideoPlayback.ts` 封装有界字节窗口、连续前缀证明、取消和定位合并。`TelegramClient` 验证消息/文件归属，`TelegramService` 绑定账户与连接代数。`VideoHttpStream.ets` 只在临时 loopback 地址提供一个随机路径、一个已授权视频的标准 Range 读取，关闭监听和连接后不保留独立媒体副本。`VideoPlayer` 使用官方 AVPlayer 网络源/完整文件 fd，保留播放意图并等待 seekDone 恢复，单击/双击/横滑/长按交互与控件都留在 ArkUI。安全边界和实际验收见 [VIDEO_PLAYER.md](VIDEO_PLAYER.md)。
+
+## 自建网络中转
+
+`RelayModels.ts` 负责域名/目标验证、增量带认证 SOCKS5 和 nonce 探针；`RelayPreferences.ets` 在独立 Asset 保存配置；`RelayTunnel.ets` 使用官方 NetworkKit 监听 loopback 并承载 WSS 二进制流。`RelaySettings.ets` 提供原生配置页面。TelegramService 管理测试、持久化与连接生命周期，TelegramClient 负责 TDLib 代理确认及网络放行顺序。Native 桥不感知自定义协议。启用失败不回落直连；账户切换重建传输，不改账号密钥和存储边界。协议、限制及独立验收见 [TELEGRAM_RELAY.md](TELEGRAM_RELAY.md)。
+
+网络管理使用 `RelayRegistry` v2（配置 ID、名称、域名、令牌请求头、令牌，以及独立的 activeId）。直接连接以空 activeId 表达，切换直连保留全部配置；旧单配置 Asset 在读取时迁移为一条记录，成功保存时才原位写入 v2，不另开可导致回退的存储别名。编辑非活动项不重连；活动项修改/切换先探针验证，成功才持久化并重连同一账号。写入失败尝试恢复原连接；连接失败后页面重新读取实际已保存选择。删除当前项须先选择其他连接方式。默认 Authorization 使用 Bearer 前缀，其他自定义令牌头发送原始令牌；拒绝连接/协议保留头与 CR/LF。

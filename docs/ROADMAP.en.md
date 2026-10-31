@@ -26,7 +26,7 @@ Real authentication, two-account switching, core message actions, rich display, 
 ## Paused and experimental
 
 - Cloud HAP builds in GitHub Actions remain paused. CI checks domain/public safety and deploys only the static site; no official HAP is published.
-- Relay protocol experiments exist, but app-side TDLib/WSS integration and real account use without a system VPN are not complete. Private deployment addresses are not public client features.
+- The TDLib/WSS bridge and multiple-route manager are implemented, with independent Cloudflare messaging/media evidence on a device without VPN. Other services, weak networks and connection-limit recovery need separate acceptance. Private deployment addresses remain unpublished.
 - Calls, Stories and other Web A capabilities remain in the full matrix; these groups do not narrow that scope.
 
 ## Notification candidate

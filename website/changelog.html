@@ -56,6 +56,26 @@
 <article class="doc-content" data-doc-language="zh" lang="zh-CN">
 <h1>更新日志</h1>
 <p>本文件记录已合入源码的变化，不代表已发布可安装 HAP。<a href="features.html">现有功能</a> 说明当前能力和验证边界，<a href="roadmap.html">路线图</a> 说明后续计划。English: <a href="changelog.html">CHANGELOG.en.md</a>。</p>
+<h2>未发布 · 2026-11-01</h2>
+<h3>新增</h3>
+<ul>
+<li>应用内「网络和代理管理」：最多 32 条命名中转配置，添加、编辑、独立测试、选择、重新连接及删除；切换直连保留配置。</li>
+<li>可配置访问令牌请求头，默认 <code>Authorization: Bearer &lt;token&gt;</code>，自定义头发送原始令牌；配置安全存储于 Asset，兼容旧单线路配置。</li>
+<li>WebSocket 隧道代理接入及应用内配置说明：域名、令牌、请求头、部署前提、测试和启用步骤；不影响系统 VPN 或其他应用。</li>
+</ul>
+<h3>调整与修复</h3>
+<ul>
+<li>设置、账户、存储与代理等页面采用 HDS 原生标题、设置行和按钮层级，完善搜索、选择和返回交互；设计规范集中维护并由 AGENTS.md 引用。</li>
+<li>聊天详情保留原头像、紧凑标题栏和会话操作展开区，原返回栈、消息、草稿与媒体布局保持。</li>
+<li>中转启用前等待 TDLib 代理确认，失败不静默直连；非活动配置编辑不重连，切换验证失败保留原线路，保存失败尝试恢复连接。</li>
+</ul>
+<h3>验证与限制</h3>
+<ul>
+<li>339 项宿主机测试、真实 SDK 26 编译签名、指定真机普通覆盖安装/启动通过；多线路管理、页面返回、键盘及原草稿保留已有真机记录。</li>
+<li>Cloudflare 已在用户确认未开 VPN 的指定真机验证文字双向、图片/视频、边下边播、定位和媒体回传；结果不推广到所有网络、格式或设备。</li>
+<li>EdgeOne HTTPS 和 WebSocket 升级已通过，但双向传输仍在握手前以 1006 断开，尚不可作为已验证可用线路。长时恢复、弱网、UDP 通话和其他窗口形态仍未验收。</li>
+<li>官网功能、路线图和中英文更新日志同步生成；私人中转域名、凭据及原始截图/日志不公开。本次为源码开发预览，不发布 HAP。</li>
+</ul>
 <h2>未发布 · 2026-10-31</h2>
 <h3>新增</h3>
 <ul>
@@ -90,6 +110,26 @@
 <article class="doc-content" data-doc-language="en" lang="en" hidden>
 <h1>Changelog</h1>
 <p>This records source changes, not an installable HAP release. See <a href="features.html">features</a> for current scope and evidence, and the <a href="roadmap.html">roadmap</a> for plans. <a href="changelog.html">中文</a>.</p>
+<h2>Unreleased · 2026-11-01</h2>
+<h3>Added</h3>
+<ul>
+<li>In-app network and proxy management for up to 32 named relay routes: add, edit, test, select, reconnect and delete. Explicit direct mode retains saved routes.</li>
+<li>Configurable token headers: <code>Authorization: Bearer &lt;token&gt;</code> by default, or the raw token in a custom header; Asset-backed storage with migration from the single-route format.</li>
+<li>WebSocket tunnel integration and in-app setup guidance covering domains, tokens, headers, deployment prerequisites, testing and selection; no changes to system VPN settings or other apps.</li>
+</ul>
+<h3>Changed and fixed</h3>
+<ul>
+<li>HDS native titles, settings rows and button hierarchy for settings, accounts, storage and relay pages, with improved search, selection and back navigation. AGENTS.md links the shared design guidelines.</li>
+<li>Chat details retain the original avatar, compact header and expandable conversation actions, preserving the navigation stack, messages, drafts and media layout.</li>
+<li>TDLib waits for proxy confirmation before connecting; relay failures do not silently fall back to direct access. Inactive edits do not reconnect; failed validation preserves the active route, and failed persistence attempts connection recovery.</li>
+</ul>
+<h3>Validation and limitations</h3>
+<ul>
+<li>339 host tests, a real SDK 26 signed build, and normal device update-install/launch passed. Multi-route management, navigation, keyboard handling and original-draft retention have device evidence.</li>
+<li>Cloudflare two-way text, photos/videos, progressive playback, seeking and media uploads were verified on the designated device with VPN off as confirmed by the user. This does not cover all networks, codecs or devices.</li>
+<li>EdgeOne HTTPS and WebSocket upgrade pass, but bidirectional transport still closes with 1006 before the protocol handshake; it is not a validated usable route. Long-session recovery, weak networks, UDP calls and other window forms remain unverified.</li>
+<li>Website features, roadmap and bilingual changelog are regenerated together. Private relay addresses, credentials and raw screenshots/logs stay excluded. This is a source preview, not a HAP release.</li>
+</ul>
 <h2>Unreleased · 2026-10-31</h2>
 <h3>Added</h3>
 <ul>

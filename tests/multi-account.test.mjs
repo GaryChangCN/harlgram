@@ -15,6 +15,12 @@ function fixture() {
  const secondary='a'.repeat(32), entries=new Map([['primary',{apiId:12345,apiHash:'b'.repeat(32),encryptionKey:'legacy-key'}]]);
  let stored={active:'primary',accounts:[{id:'primary',name:'Original'}]}, failSave=false, stuck=false;
  const starts=[]; let closes=0; let instance;
+ let relay={enabled:false,endpoint:'',token:''}, relayRoutes, relaySaveFails=false, relayTestFails=false, tunnelOpens=0, tunnelCloses=0;
+ class Tunnel {
+  static async test(){if(relayTestFails)throw Error('synthetic relay failure');}
+  async open(){tunnelOpens++;return {server:'127.0.0.1',port:10000+tunnelOpens,username:'user'+tunnelOpens,password:'password'+tunnelOpens};}
+  close(){tunnelCloses++;}
+ }
  const fileApi={accessSync:()=>true,access:async()=>false};
  class Client {
   constructor(){instance=this;}
@@ -22,16 +28,23 @@ function fixture() {
   state(){return {...this.current};} subscribe(fn){this.listener=fn;fn(this.state());} unsubscribe(){}
   start(p){assert.ok(['idle','closed'].includes(this.current.phase));starts.push(p);this.current={phase:'phone',ready:false};this.listener?.(this.state());}
   close(){closes++;if(!stuck){this.current={phase:'closed',ready:false};this.listener?.(this.state());}}
+  isRunning(){return !['idle','closed'].includes(this.current.phase);}
   leaveChat(){} drain(){} getCurrentUser(){return this.current.ready ? (this.user || {id:'42',name:'New example account'}) : undefined;} fail(){}
  }
  const vault={load:async id=>entries.get(id),createAccountId:()=>secondary, save:async(id,hash,fresh,account)=>{const p=entries.get(account)||{apiId:id,apiHash:hash,encryptionKey:'new-key',databaseNamespace:secondary};entries.set(account,p);return p;}};
  const store={load:async()=>structuredClone(stored),save:async value=>{if(failSave)throw Error('fixture');stored=structuredClone(value);}};
  const service=load('services/TelegramService.ets',{
+  '../model/RelayModels':load('model/RelayModels.ts',{}),
+  './RelayPreferences':{RelayPreferences:{load:async()=>structuredClone(relay),save:async value=>{relay=structuredClone(value);},
+   loadRegistry:async()=>structuredClone(relayRoutes || load('model/RelayModels.ts',{}).relayMigrate(relay)),
+   saveRegistry:async value=>{if(relaySaveFails)throw Error('synthetic storage failure');relayRoutes=structuredClone(value);relay=load('model/RelayModels.ts',{}).relaySelected(value);}}},
+  './RelayTunnel':{RelayTunnel:Tunnel},
   '@kit.CoreFileKit':{fileIo:fileApi},'@kit.BasicServicesKit':{},'libentry.so':{default:{getTdlibStatus:()=> 'available'}},
   '../data/ChatRepository':{chatRepository:{}},'../model/VideoPlayback':{VideoRangeReader:class {constructor(source){this.source=source;}}},'../telegram/TelegramClient':{TelegramClient:Client},'./CredentialVault':{CredentialVault:vault},'./AttachmentService':{},'./StorageManager':{StorageManager:class {async initialize(){} foreground(){} async maintain(){}}},
   '../telegram/TdTypes':{},'../model/SessionStorage':model,'./AccountStore':{AccountStore:store},'../config/TelegramBuildConfig':{TELEGRAM_API_ID:12345,TELEGRAM_API_HASH:'b'.repeat(32)}
  }).telegramService;
- return {service,fileApi,authorize:(user)=>{instance.user=user;instance.current={phase:'ready',ready:true};instance.listener?.(instance.state());},context:{filesDir:'/fixture'},starts,entries,secondary,get stored(){return stored;},get closes(){return closes;},set failSave(v){failSave=v;}};
+ return {service,fileApi,authorize:(user)=>{instance.user=user;instance.current={phase:'ready',ready:true};instance.listener?.(instance.state());},context:{filesDir:'/fixture'},starts,entries,secondary,get stored(){return stored;},get closes(){return closes;},set failSave(v){failSave=v;},
+  get relayRoutes(){return relayRoutes;},set relaySaveFails(v){relaySaveFails=v;},get relay(){return relay;},set relay(v){relay=v;},set relayTestFails(v){relayTestFails=v;},get tunnelOpens(){return tunnelOpens;},get tunnelCloses(){return tunnelCloses;}};
 }
 test('adding an account closes but never logs out or overwrites legacy credentials',async()=>{
  const f=fixture();await f.service.resume(f.context);const original=structuredClone(f.entries.get('primary'));
@@ -41,6 +54,27 @@ test('adding an account closes but never logs out or overwrites legacy credentia
  assert.equal(f.starts[1].databaseDirectory,'/fixture/telegram/session-'+f.secondary);
  assert.notEqual(f.starts[0].encryptionKey,f.starts[1].encryptionKey);
  assert.equal(f.stored.active,f.secondary);
+});
+test('failed relay validation leaves the active account and saved transport untouched',async()=>{
+ const f=fixture();await f.service.resume(f.context);f.relayTestFails=true;
+ await assert.rejects(f.service.saveRelayConfiguration(f.context,{enabled:true,endpoint:'relay.example.com',token:'synthetic-relay-token-for-tests-only-12345'}));
+ assert.equal(f.closes,0);assert.equal(f.starts.length,1);assert.equal(f.relay.enabled,false);assert.equal(f.entries.size,1);
+});
+test('relay changes reconnect the same account and explicit direct mode removes loopback configuration',async()=>{
+ const f=fixture();await f.service.resume(f.context);const original=structuredClone(f.entries.get('primary'));
+ await f.service.saveRelayConfiguration(f.context,{enabled:true,endpoint:'relay.example.com',token:'synthetic-relay-token-for-tests-only-12345'});
+ assert.equal(f.starts.at(-1).relayProxy.server,'127.0.0.1');assert.equal(f.relay.enabled,true);
+ assert.deepEqual(f.entries.get('primary'),original);assert.equal(f.stored.active,'primary');
+ await f.service.saveRelayConfiguration(f.context,{enabled:false,endpoint:'',token:''});
+ assert.equal(f.starts.at(-1).relayProxy,undefined);assert.equal(f.relay.enabled,false);assert.equal(f.tunnelCloses,1);
+});
+test('account switches replace the relay listener credentials without changing the saved relay or account keys',async()=>{
+ const f=fixture();f.relay={enabled:true,endpoint:'https://relay.example.com',token:'synthetic-relay-token-for-tests-only-12345'};
+ await f.service.resume(f.context);await f.service.addAccount(f.context);
+ assert.notEqual(f.starts[0].relayProxy.port,f.starts[1].relayProxy.port);
+ assert.notEqual(f.starts[0].relayProxy.password,f.starts[1].relayProxy.password);
+ assert.equal(f.relay.enabled,true);assert.equal(f.tunnelOpens,2);assert.equal(f.tunnelCloses,1);
+ assert.equal(f.entries.get('primary').encryptionKey,'legacy-key');
 });
 test('switching back restores the original key and original database path',async()=>{
  const f=fixture();await f.service.resume(f.context);await f.service.addAccount(f.context);await f.service.switchAccount(f.context,'primary');
@@ -116,4 +150,37 @@ test('account change during disk validation never starts a download in the new a
  f.service.client.videoRange=async(...args)=>calls.push(args);
  const reader=f.service.createVideoReader('-10','1',80);await f.service.addAccount(f.context);finish(false);
  await assert.rejects(reader,/账户已切换/);assert.equal(calls.length,0);
+});
+
+const profile = id => ({id,name:'Example '+id,endpoint:'https://relay.example.com',token:'synthetic-relay-token-for-tests-only-12345',headerName:'Authorization'});
+test('saving inactive routes never reconnects or probes the active connection',async()=>{
+ const f=fixture();await f.service.resume(f.context);f.relayTestFails=true;
+ await f.service.saveRelayRegistry(f.context,{version:2,activeId:'',profiles:[profile('a'),profile('b')]});
+ assert.equal(f.closes,0);assert.equal(f.starts.length,1);assert.equal(f.relayRoutes.profiles.length,2);
+});
+test('failed selected-route validation leaves all routes and the active connection untouched',async()=>{
+ const f=fixture();await f.service.resume(f.context);await f.service.saveRelayRegistry(f.context,{version:2,activeId:'',profiles:[profile('a'),profile('b')]});
+ const before=structuredClone(f.relayRoutes);f.relayTestFails=true;
+ await assert.rejects(f.service.saveRelayRegistry(f.context,{...before,activeId:'b'}));
+ assert.deepEqual(f.relayRoutes,before);assert.equal(f.closes,0);assert.equal(f.starts.length,1);
+});
+test('selecting routes and explicit direct preserves the full registry and account key',async()=>{
+ const f=fixture();await f.service.resume(f.context);const profiles=[profile('a'),{...profile('b'),headerName:'X-Relay-Token'}];
+ await f.service.saveRelayRegistry(f.context,{version:2,activeId:'a',profiles});
+ await f.service.saveRelayRegistry(f.context,{version:2,activeId:'b',profiles});
+ assert.equal(f.relayRoutes.activeId,'b');assert.equal(f.relay.headerName,'X-Relay-Token');assert.equal(f.tunnelOpens,2);
+ await f.service.saveRelayRegistry(f.context,{version:2,activeId:'',profiles});
+ assert.equal(f.starts.at(-1).relayProxy,undefined);assert.equal(f.relayRoutes.profiles.length,2);assert.equal(f.entries.get('primary').encryptionKey,'legacy-key');
+});
+
+test('active-route Asset write failure restores the original connection and registry',async()=>{
+ const f=fixture();await f.service.resume(f.context);await f.service.saveRelayRegistry(f.context,{version:2,activeId:'a',profiles:[profile('a'),profile('b')]});
+ const before=structuredClone(f.relayRoutes);before.profiles[1].headerName='X-Relay-Token';f.relaySaveFails=true;
+ await assert.rejects(f.service.saveRelayRegistry(f.context,{...before,activeId:'b'}));
+ assert.equal(f.relayRoutes.profiles[1].headerName,'Authorization');assert.equal(f.relayRoutes.activeId,'a');assert.equal(f.starts.length,3);assert.ok(f.starts.at(-1).relayProxy);
+});
+test('explicit reconnect rebuilds the current route without deleting alternatives',async()=>{
+ const f=fixture();await f.service.resume(f.context);const routes={version:2,activeId:'a',profiles:[profile('a'),profile('b')]};
+ await f.service.saveRelayRegistry(f.context,routes);const first=f.starts.at(-1).relayProxy.port;
+ await f.service.saveRelayRegistry(f.context,routes,true);assert.notEqual(f.starts.at(-1).relayProxy.port,first);assert.equal(f.relayRoutes.profiles.length,2);
 });

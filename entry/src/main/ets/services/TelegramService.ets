@@ -14,6 +14,9 @@ import { Contact, MessagePermissions, MessageActionState } from '../model/ChatMo
 import { sessionStorageDirectory } from '../model/SessionStorage';
 import { AccountStore, AccountProfile, AccountRegistry } from './AccountStore';
 import { TELEGRAM_API_ID, TELEGRAM_API_HASH } from '../config/TelegramBuildConfig';
+import { RelayConfiguration, RelayLocalProxy, RelayRegistry, relayConfiguration, relayRegistry, relaySelected } from '../model/RelayModels';
+import { RelayPreferences } from './RelayPreferences';
+import { RelayTunnel } from './RelayTunnel';
 
 export { TelegramState, TelegramHistoryState } from '../telegram/TdTypes';
 
@@ -31,6 +34,54 @@ class TelegramService {
   private timer: number = -1;
   private starting: boolean = false;
   private freshStorageRequested: boolean = false;
+  private relayTunnel: RelayTunnel | undefined = undefined;
+
+  async loadRelayConfiguration(): Promise<RelayConfiguration> { return RelayPreferences.load(); }
+  async testRelayConfiguration(value: RelayConfiguration): Promise<void> {
+    const config = relayConfiguration(value);
+    if (!config.enabled) throw new Error('请先启用自建中转');
+    await RelayTunnel.test(config);
+  }
+  async saveRelayConfiguration(context: common.UIAbilityContext, value: RelayConfiguration): Promise<void> {
+    if (this.switching || this.starting || this.state().submitting) throw new Error('连接正在处理，请稍后重试');
+    this.switching = true;
+    try {
+      const config = relayConfiguration(value);
+      if (config.enabled) await RelayTunnel.test(config);
+      await this.loadAccounts();
+      const credentials = await CredentialVault.load(this.registry.active);
+      await this.closeForSwitch();
+      this.relayTunnel?.close(); this.relayTunnel = undefined;
+      await RelayPreferences.save(config);
+      if (credentials) await this.connect(context, credentials);
+    } finally { this.switching = false; }
+  }
+
+  async loadRelayRegistry(): Promise<RelayRegistry> { return RelayPreferences.loadRegistry(); }
+  async saveRelayRegistry(context: common.UIAbilityContext, value: RelayRegistry, reconnect: boolean = false): Promise<void> {
+    if (this.switching || this.starting || this.state().submitting) throw new Error('连接正在处理，请稍后重试');
+    this.switching = true;
+    try {
+      const registry = relayRegistry(value);
+      const next = relaySelected(registry);
+      const previous = await RelayPreferences.load();
+      if (!reconnect && JSON.stringify(next) === JSON.stringify(previous)) {
+        await RelayPreferences.saveRegistry(registry); return;
+      }
+      if (next.enabled) await RelayTunnel.test(next);
+      await this.loadAccounts();
+      const credentials = await CredentialVault.load(this.registry.active);
+      await this.closeForSwitch();
+      this.relayTunnel?.close(); this.relayTunnel = undefined;
+      try { await RelayPreferences.saveRegistry(registry); }
+      catch (_) {
+        // An unsuccessful Asset overwrite leaves the old registry intact.
+        if (credentials) await this.connect(context, credentials);
+        throw new Error('配置保存失败，已尝试恢复原连接，请重试');
+      }
+      if (credentials) await this.connect(context, credentials);
+    } finally { this.switching = false; }
+  }
 
   private registry: AccountRegistry = { active: 'primary', accounts: [] };
   private switching: boolean = false;
@@ -43,6 +94,7 @@ class TelegramService {
   }
   private async closeForSwitch(): Promise<void> {
     this.videoEpoch++;
+    if (!this.client.isRunning()) return;
     if (this.state().phase === 'idle' || this.state().phase === 'closed') { return; }
     this.client.leaveChat();
     this.client.close();
@@ -154,13 +206,23 @@ class TelegramService {
       this.client.fail('此安装包尚未包含可用的 TDLib 原生库，请先运行 build-tdlib.sh 并重新构建。');
       throw new Error('TDLib 原生库不可用');
     }
+    const relay = await RelayPreferences.load();
+    this.relayTunnel?.close(); this.relayTunnel = undefined;
+    let relayProxy: RelayLocalProxy | undefined = undefined;
+    if (relay.enabled) {
+      const tunnel: RelayTunnel = new RelayTunnel(relay, () => {
+        if (this.relayTunnel === tunnel) this.client.fail('中转连接失败，请检查网络设置；当前未切换为直连');
+      });
+      this.relayTunnel = tunnel;
+      try { relayProxy = await tunnel.open(); } catch (_) { tunnel.close(); this.relayTunnel = undefined; throw new Error('无法启动中转连接，请重试'); }
+    }
     const directory = sessionStorageDirectory(context.filesDir, credentials.databaseNamespace);
     if (!fileIo.accessSync(directory)) { fileIo.mkdirSync(directory, true); }
     const files = directory + '/files';
     if (!fileIo.accessSync(files)) { fileIo.mkdirSync(files, true); }
     const parameters: TelegramParameters = {
       apiId: credentials.apiId, apiHash: credentials.apiHash,
-      databaseDirectory: directory, filesDirectory: files, encryptionKey: credentials.encryptionKey
+      databaseDirectory: directory, filesDirectory: files, encryptionKey: credentials.encryptionKey, relayProxy: relayProxy
     };
     await this.storageManager.initialize(context, this.registry.active);
     this.videoEpoch++; this.client.start(parameters);

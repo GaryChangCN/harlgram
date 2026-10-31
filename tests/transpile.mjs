@@ -12,6 +12,7 @@ const files = [
   'model/MediaModels.ts',
   'model/StorageModels.ts',
   'model/VideoPlayback.ts',
+  'model/RelayModels.ts',
   'model/MessagePresentation.ts',
   'model/PhoneNumber.ts',
   'model/PhotoTransform.ts',

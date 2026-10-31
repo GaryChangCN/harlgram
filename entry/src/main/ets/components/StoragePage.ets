@@ -1,3 +1,6 @@
+import { HdsPage } from './HdsPage';
+import { HdsSettingsRow } from './HdsSettingsRow';
+import { HdsListItemCard, HdsListItemCardAttribute, SuffixSwitch } from '@kit.UIDesignKit';
 import { promptAction } from '@kit.ArkUI';
 import { telegramService } from '../services/TelegramService';
 import { StorageManager } from '../services/StorageManager';
@@ -14,14 +17,11 @@ struct StorageToggleRow {
   action: (value: boolean) => void = () => {};
   open: () => void = () => {};
   build() {
-    Row({ space: 12 }) {
-      Column({ space: 5 }) {
-        Text(this.title).fontSize(15).fontColor(this.dark ? '#EEF4FC' : '#162B40')
-        Text(this.subtitle).fontSize(12).fontColor(this.dark ? '#94A6BA' : '#8493A5').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-      }.alignItems(HorizontalAlign.Start).layoutWeight(1).onClick(() => this.open()).enabled(this.isEnabled)
-      Toggle({ type: ToggleType.Switch, isOn: this.checked }).selectedColor('#268BDE')
-        .onChange((value: boolean) => this.action(value)).enabled(this.isEnabled)
-    }.width('100%').constraintSize({ minHeight: 76 }).padding({ left: 16, right: 16, top: 8, bottom: 8 })
+    HdsListItemCard({ textItem: { primaryText: { text: this.title }, secondaryText: { text: this.subtitle } },
+      suffixItem: new SuffixSwitch({ isCheck: this.checked, enable: this.isEnabled,
+        onChange: (value: boolean) => this.action(value) }),
+      cardBackgroundColor: Color.Transparent, enable: this.isEnabled, onClick: () => this.open()
+    }).width('100%')
   }
 }
 @Component
@@ -32,12 +32,7 @@ struct StorageValueRow {
   @Prop dark: boolean = false;
   action: () => void = () => {};
   build() {
-    Row({ space: 10 }) {
-      Text(this.title).fontSize(15).fontColor(this.dark ? '#EEF4FC' : '#162B40').layoutWeight(1)
-      Text(this.value).fontSize(14).fontColor('#268BDE').maxLines(1)
-      Text('›').fontSize(23).fontColor(this.dark ? '#94A6BA' : '#8493A5')
-    }.width('100%').constraintSize({ minHeight: 54 }).padding({ left: 16, right: 16 })
-      .onClick(() => this.action()).enabled(this.isEnabled)
+    HdsSettingsRow({ title: this.title, value: this.value, isEnabled: this.isEnabled, action: () => this.action() })
   }
 }
 
@@ -262,17 +257,8 @@ export struct StoragePage {
         .width('100%').backgroundColor(this.surface()).borderRadius(18)
     })
   }
-  build() {
-    Column() {
-      Row({ space: 10 }) {
-        Button({ type: ButtonType.Circle }) { Image($r('app.media.hg_back_blue')).width(24).height(24) }
-          .width(40).height(44).backgroundColor(Color.Transparent).onClick(() => { if (this.route !== 'storage') { this.route = 'storage'; } else { this.onClose(); } }).accessibilityText('返回')
-        Text(this.title()).fontSize(19).fontWeight(FontWeight.Medium).fontColor(this.ink()).layoutWeight(1)
-        if (this.route !== 'auto') {
-          Button('刷新').fontSize(13).fontColor('#268BDE').backgroundColor(Color.Transparent).height(40)
-            .enabled(!this.loading && !this.saving).onClick(() => { if (this.route === 'network') { this.openNetwork(); } else { this.refresh(); } })
-        }
-      }.width('100%').height(56).padding({ left: 8, right: 12 }).backgroundColor(this.surface())
+  @Builder
+  private storageBody() {
       Scroll() {
         Column() {
           if (this.error) { Text(this.error).fontSize(13).fontColor('#D56464').width('100%').padding(12) }
@@ -282,7 +268,15 @@ export struct StoragePage {
           else if (this.route === 'network') { this.trafficPage() }
           else { this.usage() }
         }.width('100%').padding({ left: 16, right: 16, bottom: 28 }).alignItems(HorizontalAlign.Start)
-      }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.Top)
-    }.width('100%').height('100%').backgroundColor(this.pageColor())
+      }.width('100%').height('100%').scrollBar(BarState.Off).align(Alignment.Top)
+
+  }
+
+  build() {
+    HdsPage({ title: this.title(), dark: this.dark, isEnabled: !this.saving,
+      onBack: () => { if (this.route !== 'storage') this.route = 'storage'; else this.onClose(); },
+      firstLabel: this.route === 'auto' ? '' : '刷新', firstEnabled: !this.loading && !this.saving, firstSymbol: $r('sys.symbol.arrow_clockwise'),
+      firstAction: () => { if (!this.loading && !this.saving) { if (this.route === 'network') this.openNetwork(); else this.refresh(); } }
+    , content: () => { this.storageBody() } }).width('100%').height('100%').backgroundColor(this.pageColor())
   }
 }

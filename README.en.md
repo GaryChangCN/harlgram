@@ -32,10 +32,11 @@ Harlgram connects to Telegram through ArkTS / ArkUI, a C++ Node-API bridge, and 
 
 ## What works today
 
-This summary reflects evidence recorded on **2026-10-31**. Implementation, host tests, SDK compilation, device behavior, and server synchronization are separate levels of evidence. See [current status](docs/STATUS.md) and the [Web A parity matrix](docs/TELEGRAM_WEB_PARITY.md) for the detailed scope. Most engineering documents are currently in Chinese.
+This summary reflects evidence recorded on **2026-11-01**. Implementation, host tests, SDK compilation, device behavior, and server synchronization are separate levels of evidence. See [current status](docs/STATUS.md) and the [Web A parity matrix](docs/TELEGRAM_WEB_PARITY.md) for the detailed scope. Most engineering documents are currently in Chinese.
 
 | Area | Current scope and limits |
 | --- | --- |
+| Network and proxies | Multiple self-hosted routes, explicit selection/direct mode, configurable token headers, secure storage and legacy migration; Cloudflare messaging and media verified on a device without VPN. See [relay scope](docs/TELEGRAM_RELAY.md). |
 | Real account login | TDLib authentication states, country/calling-code selection, phone number, code, and existing two-step password login. Users enter their own credentials. Physical-device login and session retention across normal update installs have been verified. |
 | Chats and contacts | Real main chat list, avatars, unread counts, draft previews, history pagination, group senders, and dates. Existing contacts can open private chats. Current filters and search operate on loaded data only. |
 | Text and drafts | Real text messaging, pending/failed states, and plain-text drafts. Cross-client behavior and draft preservation have evidence; full rich drafts and concurrent cross-client editing remain incomplete. |

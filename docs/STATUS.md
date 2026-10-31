@@ -1,12 +1,107 @@
 # 当前开发状态
 
-更新：2026-10-31。此文件为 AI / 开发者接力入口，不含私有配置或账号内容。
+更新：2026-11-01。此文件为 AI / 开发者接力入口，不含私有配置或账号内容。
 
 ## 当前目标与设备
 
 完整目标是功能对齐用户已登录的 Telegram Web A 手机尺寸界面，逐项范围见 [TELEGRAM_WEB_PARITY.md](TELEGRAM_WEB_PARITY.md)。功能与用户意图参考 Web A，协议使用固定 TDLib，UI/UX 采用鸿蒙官方 ArkUI。基础聊天或一批操作通过不代表全面完成。
 
-先完成手机单栏、用户阔折叠真机未展开形态；展开和其他设备形态后置。**用户真机已重新连接并自行完成登录；当前只用 HOP-AL00 / API 26 真机测试，Pura 90 Pro 模拟器已关闭。** 不自行重开模拟器，仅在用户明确配合时采集展开形态。多个设备在线时必须显式指定 HDC_TARGET。
+先完成手机单栏；其他设备形态后置。2026-10-31 先按用户授权完成 Pura 90 Pro 模拟器中转验证，随后用户指定已连接 HOP-AL00 / API 26 真机，并明确真机没有开启 VPN；本轮后续验收切到该真机未展开形态，所有设备操作显式指定 HDC_TARGET。模拟器与真机证据分别记录。
+
+## 本轮 PR 交付准备（2026-11-01）
+
+本批提交范围为应用内 WebSocket 隧道、多线路网络和代理管理、配置说明、设置类页面 HDS 样式与设计规范；聊天详情按用户最新要求保留迁移前样式。中英文 CHANGELOG 新增 2026-11-01 未发布条目，功能页补齐当前界面与 EdgeOne 边界，官网三份双语进度页及 sitemap 已从对应 Markdown 生成；Pages 在合入 main 后自动部署，PR 本身不代表线上已更新。
+
+提 PR 前 `./scripts/test-domain.sh` 再次通过 339 项（`artifacts/relay-pr-tests.log`），官网生成一致性检查通过。最终源码的真实 SDK 26 编译签名、普通真机覆盖安装/启动及聊天恢复验收见下节，不把本次文档修改写成重新验收服务端。Cloudflare 实际收发证据沿用本文件记录；EdgeOne 1006 仍未解决，非可用线路。提交前检查完整实际 index 的内容及公开文件清单，原始截图、草稿、私密配置和运维产物保持忽略。PR 地址与在线检查结果以 GitHub 为准。
+
+## 当前开发：按用户要求恢复原聊天页面（2026-11-01）
+
+用户不接受本轮聊天详情的 HDS 外观，明确要求恢复之前的聊天页面。已从本轮改动前备份逐段恢复聊天标题栏（原头像、名称/状态、返回与操作展开区）、chatPage 正文布局、Navigation / NavDestination 外壳，撤销额外 56 vp 顶部避让；会话进入/退出重置操作展开状态。没有整体覆盖 Index.ets，其他设置页面、网络与代理管理、中转配置和协议逻辑保留。AGENTS.md 与 UI_GUIDELINES.md 明确记录聊天详情例外；下方 HDS 迁移记录为本次回退前的历史验收，聊天外观以本节为准。
+
+源码已恢复；四个聊天/导航 Builder 与本轮迁移前备份逐字一致。真实 SDK 26 signed HAP 编译通过，指定用户真机普通覆盖安装与启动通过；原聊天标题、头像、操作展开/收起、键盘收起、页面返回后重新进入和原草稿逐字保留已实测；真机最终停在原样式收藏夹聊天页。日志 `artifacts/hds-chat-restore-build.log`、`hds-chat-restore-install.log`、`hds-chat-restore-run.log`、`hds-chat-restore-ui.log`；截图与草稿留在 ignored artifacts。本轮无协议、服务端修改，不新增消息收发/媒体服务端验证结论。
+
+## 当前开发：既有页面 HDS 统一与设计约定（2026-11-01）
+
+用户要求将已验证的 HDS 样式推广到之前的页面，并从 AGENTS.md 外联单独设计规范。直接扩充已有 `docs/UI_GUIDELINES.md`，不建立第二套重复规范；AGENTS.md 已将其设为所有 UI 改动必读，明确组件映射、例外场景与真机验收约束。
+
+- **源码已实现**：新增共用 `HdsPage.ets` / `HdsSettingsRow.ets`。聊天列表、联系人、设置、账户管理、账号就绪/认证外壳、关于、存储/自动下载/网络用量采用官方 HDS 标题与操作栏；聊天保留原 NavPathStack 和消息 Scroller，外壳换为 HdsNavigation / HdsNavDestination，静态身份图标不假装为可点击资料入口。聊天筛选用官方 SubTabBarStyle，联系人用 Search；设置值用 HdsListItemCard / SuffixTextAndArrow，自动下载用 SuffixSwitch；会话操作改为原生菜单，转发用 Radio。欢迎/认证主次按钮、退出与清理按钮使用官方层级/危险角色。保留底部已验证的 API 26 浮动 Tabs、媒体沉浸覆盖层和原生播放器，不为换皮重写协议、账号或数据逻辑。
+- **导航与状态**：共用容器按 MINI 56 vp 避让，不让标题遮住正文；页面底色与既有 pageBackground / surface、窗口安全区保持一致。BuilderParam 通过调用方 Builder 保留页面状态作用域；业务动作由调用页面提供。Cover 与 Sheet 仍绑定不同节点。会话菜单异步返回前校验当前会话，避免选择动作作用到后来切换的聊天。
+- **检查通过**：`./scripts/test-domain.sh` 339 项通过（`artifacts/hds-pages-tests.log`）；最终真实 SDK 26 signed HAP 编译通过（`hds-pages-build.log`），未改最低 API、签名、配置或 Native ABI。普通 signed HAP 指定用户真机覆盖安装与启动通过，日志 `hds-pages-install.log` / `hds-pages-run.log`，无 ohosTest、卸载或清数据库。
+- **真机逐页通过**：HOP-AL00 / API 26 未展开窗口：聊天搜索/取消与原生筛选、联系人/设置、账户管理与关于返回、账号就绪页及网络管理往返；存储统计、自动下载子页和网络用量返回；收藏夹标题、系统操作菜单取消、键盘往返及原草稿逐字保留；图片覆盖层打开关闭；系统长按菜单、转发 Sheet 的 Radio 选择自己的收藏夹后取消；从搜索结果打开收藏夹再返回，原查询保留且最终清空测试搜索词。未发送或转发新消息、切换账号、请求验证码、修改自动下载开关或清理缓存。
+- **最终包与主题**：浅/深色设置行、关于、存储与收藏夹导航已截图复核；系统菜单取消、刷新往返与安装后原草稿保留通过。已恢复原外观偏好；最后的原生危险按钮只呈现检查，没有点击。证据 `hds-pages-basic-ui.log`、`hds-pages-storage-ui.log`、`hds-pages-draft-media-ui.log`、`hds-pages-forward-ui.log`、`hds-pages-search-restore-ui.log`、`hds-pages-final-theme-ui.log`、`hds-pages-final-smoke-ui.log`；原始截图/草稿备份均 ignored，不能公开。
+- **边界**：本轮真实服务端仅沿用已登录连接与只读更新/统计，不重新宣称完整文字/媒体收发通过；Cloudflare 先前通过与 EdgeOne 仍未解决的 1006 见下方原记录。登录手机号、验证码、密码各阶段只完成源码/SDK 检查，没有为截图退出真实会话或代为登录；其他设备、展开、横屏、多窗口、大字号与完整无障碍仍未验收。逐页组件与验收范围见设计文档和 RESPONSIVE_VALIDATION.md。没有提交或推送。
+
+## 当前开发：中转页面官方 HDS 样式（2026-10-31）
+
+用户反馈说明页外观不佳，要求采用鸿蒙当前设计规范。本轮以本机 SDK 26.0.0.105 声明和真机结果为基线，不宣称全球最新版本或所有形态完整达标。
+
+- **源码已实现**：新增 `RelayHelp.ets`，说明改为简短介绍、三步操作、四个字段分组与可展开的更多说明；使用 ArkUI List / ListItemGroupStyle.CARD、系统语义文字/分隔线颜色，按正文实际高度布局。标题改用 UIDesignKit HdsNavigation MINI 的官方标题栏、返回与帮助菜单；管理/编辑次要操作用官方 TEXTUAL/NORMAL 按钮层级，避免重复强调按钮。页面保留原生 520 vp 最大内容宽度和 16 vp 边距。
+- **视觉修复**：真机发现并修复了浮动标题栏未避让造成的首屏重叠、CARD 固定行高造成的长文裁切、深色下自定义 Symbol 未设置语义颜色导致的返回图标对比度不足。MINI 起点按 SDK 对应 56 vp 预留；滚动后的官方标题栏遮挡/分隔效果已截图复核。页面底色延续应用现有外观，不改其他页面的主题策略。
+- **编译与设备通过**：最终真实 SDK 26 signed HAP 构建成功，指定 HOP-AL00 / API 26 未展开真机正常覆盖安装与启动通过，日志 `artifacts/relay-hds-build.log`、`relay-hds-install.log`、`relay-hds-run.log`；没有卸载、清数据库或 ohosTest。
+- **真机交互与呈现通过**：帮助入口、请求头示例展开/收起、部署说明展开/滚动、系统返回与官方按钮返回后合成未保存名称逐字保留、逐层返回原设置、合成项未保存、Cloudflare 原选择保留均通过（`relay-hds-final-ui.log`）。浅/深色首屏与最终图标均截图复核；测试后已恢复用户原「浅色」偏好。更多说明/字段滚动状态也已截图，未发现横向溢出、标题压字或正文裁切。原始截图仅 ignored artifacts。
+- **边界与检查**：本轮仅样式与说明呈现，协议/存储/服务端未改，没有重新发送真实消息/媒体；Cloudflare 的真实服务端验收与 EdgeOne 未解决的 1006 沿用下方记录。纯领域逻辑无改动，沿用上轮 339 项通过；本轮以真实 SDK 和设备交互验证。完整候选公开树 208 文件及已知私密值检查通过，实际 index 未修改；没有提交/推送。其他形态、横屏、大字和完整无障碍仍未验证。
+
+## 当前开发：中转代理配置说明（2026-10-31）
+
+用户要求在页面说明普通用户如何配置，并明确专业术语。本实现采用「WebSocket 隧道代理」，对外简称「中转代理」；应用显式选择中转，不使用「透明代理」作为功能名称。
+
+- **源码已实现**：管理页和编辑页右上角「说明」进入独立原生滚动视图，解释服务准备、名称/域名/令牌/请求头、Bearer 与自定义头示例、测试不保存、保存后选择启用、自行部署的 HTTPS/WSS/TCP/鉴权前提及应用范围。例子全为虚构数据。新增说明不切换线路、不保存输入，不把普通网页反代或 SOCKS5/MTProxy 地址当成本协议服务。
+- **返回修复**：系统返回交由网络组件处理，与页面返回一致：说明 → 原编辑/列表 → 列表 → 原入口，处理期间阻止退出；组件消失时移除回调，避免持有失效页面。
+- **编译与设备**：`./scripts/build.sh` 真实 SDK 26 signed HAP 通过；`HDC_TARGET=<用户指定真机>` 普通覆盖安装和启动通过，未卸载或使用 ohosTest。日志 `artifacts/relay-help-build.log`、`relay-help-install.log`、`relay-help-run.log`。
+- **真机交互通过**：HOP-AL00 / API 26 未展开窗口，管理/编辑两入口、正文换行、完整滚动到部署要求/作用范围、系统/页面返回后未保存合成名称逐字保留、系统返回退出编辑未保存合成配置、返回原设置均通过。`artifacts/relay-help-final-ui.log` 与两张 ignored 截图；没有改动已有配置或账号草稿，最终停在说明页。其他窗口形态仍未验证。
+- **服务端边界**：本轮仅说明与导航，无协议、存储或服务端变更，未重新做消息/媒体云端收发；Cloudflare 已通过的真实服务端验收与 EdgeOne 仍未解决的 1006 阻塞见下节，不以本轮帮助页验收覆盖它们。纯领域逻辑未修改，沿用上轮 339 项通过记录；本轮采用真实 SDK 与设备交互验证，没有新增复刻文案的测试。
+
+## 当前开发：网络和代理管理（2026-10-31）
+
+用户要求将单条网络配置改为多条管理，按条目选择使用，并可自定义令牌请求头；同时完成 EdgeOne 部署验证。
+
+- **源码已实现**：`RelayRegistry` v2、最多 32 条命名配置、增改删/独立测试/显式选择/重新连接。直接连接保留所有条目，当前项须先切换再删。默认 `Authorization: Bearer <token>`；自定义字段发送原始令牌，拒绝协议保留头与 CR/LF。全部条目与令牌仍只保存在独立的 Asset 网络配置项，不进 Preferences、日志或 URL。
+- **存储与切换**：旧单配置只在内存读取迁移，首次成功保存才原位覆写。非活动项编辑不重连；活动项切换先 nonce 验证，失败保留旧连接及选择。Asset 写失败尝试恢复旧连接，页面从 Asset 读取实际保存结果；无效活动 ID / 损坏配置不自动直连。账号密钥和数据库路径不变。
+- **测试与编译**：`./scripts/test-domain.sh` 339 项通过；覆盖旧配置迁移、损坏/缺失 Asset 区分、覆写失败、配置 CRUD/容量、直连保留、自定义头语义/注入、非活动项不重连、活动项失败/恢复与显式重连。真实 SDK 26 signed HAP 编译通过，`artifacts/relay-multi-tests.log`、`relay-multi-build.log`；未改签名、Native ABI 或 TDLib。
+- **真机管理交互通过**：指定 HOP-AL00 / API 26 未展开真机普通 signed HAP 覆盖安装/启动；原 Cloudflare 配置迁移、改名、添加独立 EdgeOne、自定义头保存、失败选择保持 Cloudflare、跨进程保留两项与当前选择、重新连接，以及新建/删除本轮合成 Test 项、显式直连后配置保留并重新选回 Cloudflare 均实测。已有配置没有被测试删除。只操作自己的收藏夹合成内容，保留账号与草稿。
+- **EdgeOne 尚未通过，存在具体阻塞**：已重新登录控制台，实际日志确认原 WSS 升级 500 的一个根因为运行产物缺少 `ws`。固定生产依赖和外部模块已补齐，配置 Cloud Functions 120 秒与新加坡地域，Force HTTPS 的 HTTP → HTTPS 302 独立验证通过。现在 WSS 能升级 101，但在收到应用帧前立即以 1006 断开，Telegram nonce 未通过。进一步用不连接 TCP 的鉴权二进制回显隔离：本机同一处理器 ready/echo 均通过，EdgeOne 自定义域名和完成签名 Cookie 验证的预览域名均同样断开，范围缩小到生成包装器与托管 WebSocket 运行链路，最终根因仍未确定。已移除临时回显入口；不能把部署 Success 当作聊天或媒体验收通过。私有证据 `edgeone-transport-diagnosis.json` 与 v9/v10/v11 探测保留在工程外。真机保持 Cloudflare，未把不可用 EdgeOne 选为当前线路。
+
+- **收尾复核**：最终 339 项宿主测试再次通过；指定真机当前 Cloudflare 配置再次显示「Telegram 连接验证通过」，宿主五 DC nonce 复测全部通过。EdgeOne v11 健康检查确认最新版本生效，仍在 nonce 前 1006 断开；临时 `/transport` 已实际返回 404。官网进度页已重新生成，候选完整 index 的 207 个公开文件检查及已知私密值扫描通过，实际 index 未修改，没有提交或推送。
+
+协议、请求头和多配置语义见 [TELEGRAM_RELAY.md](TELEGRAM_RELAY.md)，额外窗口形态仍未验收。部署源码与令牌仍在工程外私有 artifacts，公开文档不包含私人地址或平台签名预览 URL。
+
+## 当前开发：Cloudflare 应用内中转（2026-10-31）
+
+从已合入 main 的基线创建独立工作树与 `codex/cloudflare-relay` 分支。先在手机模拟器以系统 OpenSSL、系统 CA 和主机名验证完成五个 Telegram DC 的 WSS → TCP `req_pq_multi → resPQ` nonce 匹配，再实现端侧接入。未修改宿主网络设置，不能据此宣称国内关闭 VPN 后所有网络可达。
+
+- **源码已实现**：原生「网络与代理」页，填写域名与独立令牌、测试和保存重连；Asset 独立安全存储；随机认证的本机 SOCKS5 转 WSS。启用代理前 TDLib 网络保持关闭，收到 addProxy 确认才放行；错误不静默直连。切账号重建监听、端口和随机凭据，保持账号数据库与密钥隔离；禁用显式清除 TDLib 旧代理及已存中转配置。
+- **编译通过**：真实 SDK 26 signed HAP 编译通过，未改 Native ABI、TDLib、API 配置或签名。宿主领域/服务测试 327 项通过，含代理准备顺序、延迟确认、失败/超时、目标限制、增量 SOCKS、nonce 和账户切换。
+- **模拟器安装与启动通过**：普通 signed HAP 覆盖安装、启动，保留既有账号。旧热启动实例截图全黑，保留数据 coldboot 后恢复；没有卸载、清数据库或 ohosTest。网络页顶端对齐、开关、密码输入、键盘收起、测试/保存交互已运行。
+- **真实服务端验证通过的范围**：应用内原生 WebSocket nonce 测试通过；保存并重启应用后，恢复 Asset 配置，本机代理与 WSS 双向传输已记录，TDLib 设置页实际变为「已连接」。错误令牌保存被拒绝；返回重新进入后，原配置仍可通过 nonce 测试。本轮初始连通验证未请求验证码、代登录或发送消息；后续用户授权的收藏夹收发验收见下方。
+- **证据**：ignored `artifacts/relay-simulator-preflight.json`、`relay-tests.log`、`relay-build.log`、`relay-install.log`、`relay-run.log`、`relay-hilog.raw.log` 与布局树。日志不记录中转令牌、目标、用户标识或数据正文；原始截图/系统日志可能含账号信息，禁止公开。
+- **仍未验收**：128 MiB/10 分钟断开重连、弱网/后台与其他窗口形态。用户确认未开 VPN 的真机结果见下方最新记录。EdgeOne WSS 仍后置。详情见 [TELEGRAM_RELAY.md](TELEGRAM_RELAY.md)。
+
+### 模拟器中转收发与媒体验收（2026-10-31）
+
+用户进一步明确授权在模拟器验证聊天收发、图片和视频。全程保持已保存中转启用，只在自己的收藏夹发明确合成测试内容，未向联系人或群发送；没有请求验证码、代登录、清数据库或卸载。
+
+- **文字双向真实云端通过**：Web 发一条带唯一测试标识的文字，模拟器收到；模拟器发送另一条测试文字，Web 实时可访问树确认云端消息到达，模拟器有发送确认。原有 Web 正文草稿先保存在本轮自动化内存，操作后逐字恢复；模拟器原本为空的正文保持为空，媒体说明独立填写，没有发送原草稿。
+- **图片下载/呈现通过**：本轮新生成 1600 × 1000 合成色条，经 Web 上传到收藏夹，模拟器初始无图片数据，点击后经中转下载并在原生查看器显示完整图案。不是复用旧截图或本地上传文件。
+- **视频冷缓存边下边播通过**：本轮新生成 H.264/AAC、60 秒、19,542,908 字节 faststart MP4，经 Web 上传；模拟器起始 `complete=false bytes=0 hasPath=false`。AVPlayer 在 **1,638,400 / 19,542,908 字节**即 prepared/playing，实际播放到结尾；暂停、前进 30 秒、恢复播放、重播有原生状态和时钟证据。
+- **未缓存位置定位通过**：已有 150 秒、46,510,579 字节的合成视频在此模拟器也是零缓存；在 **1,114,112 字节**时 prepared，随后从开头定位至 2:09，实际出现 `range offset=39583744 limit=2097152` 与 `seekDone=129000`。缓冲后未补按播放，时钟从约 2:09.78 推进到 2:24.94，证明不是只改变进度条。
+- **媒体回传通过**：仅将刚下载的合成图片/视频经系统逐次确认保存到模拟器图库，官方 Picker 选中这两项并组成相册从应用发送；Web 实时树确认新的相册两条服务端消息，回传视频在 Web 中实际解码播放。没有选择私人图库内容。测试消息及两项合成素材保留供用户复验。
+- **中转证据与边界**：配置跨进程恢复、loopback SOCKS5 / WSS 双向事件、传输期间设备 TCP 快照无 Telegram 网段直连，结合 TDLib 代理确认门禁源码共同验证。未改宿主或系统 VPN 状态，不能推断关闭 VPN 后国内可达。隐私安全日志只记录事件/字节范围，不含目标、令牌和正文。
+- **证据/验证层次**：`HDC_TARGET=127.0.0.1:5555`，使用 `run.sh`、`device-layout.sh`、`screenshot.sh` 和指定设备 `uitest uiInput`；原始布局/截图/系统日志仅 ignored artifacts。摘要 `artifacts/relay-media-validation.json`、`relay-media-events.log`；合成图案查看器 `relay-image-view.png`、播放 `relay-video-playing.png`、定位恢复 `relay-video-seek-recovered.png`。本轮没有功能源码修改，沿用已通过的 327 项测试、SDK 26 编译及 signed HAP 安装启动，不虚报重新构建。
+
+本次正常路径未发现需修复的问题。结果仅覆盖上述模拟器和两段 H.264/AAC 测试视频；更多格式、弱网、后台、服务端时长/流量上限、通话和真机仍需独立验收。
+
+### 用户真机未开 VPN 的中转验收（2026-10-31）
+
+用户指定已连接 HOP-AL00 / API 26 真机，明确未开启 VPN；本轮不更改系统 VPN、路由或电脑网络设置。只在收藏夹发送合成测试内容，普通 signed HAP 覆盖安装，未卸载、清数据库、请求验证码或代登录，既有账号保持。真机输入法把自动输入的域名当成拼音，随后由用户填写域名；令牌重新填写后应用内 nonce 验证通过。这是输入问题，未把失败测试当作服务不可达。
+
+- **独立真实网络握手**：指定真机以系统 OpenSSL、系统 CA 与主机名验证，对五个 Telegram DC 均得到 HTTP 101、正确 Upgrade Accept 与 resPQ nonce 匹配。每项约 4.8–5.1 秒，见 ignored `artifacts/relay-real-preflight.json`，不使用账号消息。
+- **应用中转与重启恢复**：原生 WebSocket nonce 测试通过后保存配置，TDLib 经随机认证 loopback SOCKS5 → WSS 双向传输。完成下述收发后 force-stop 自有 bundle 并 `run.sh` 重启，中转开关仍为开启、设置页实际为「已连接」。媒体传输期间 TCP 快照无 Telegram IPv4 网段直连；此证据结合代理确认门禁与实际收发，不把单一状态文本当作云端通过。
+- **文字双向通过**：Web 向收藏夹发送本轮唯一测试文字，真机收到；真机发送独立数字测试标识，Web 实时可访问树确认服务端到达。Web 原草稿在内存保存并逐字恢复，真机原空正文保持为空，没有代发原草稿或向联系人发消息。
+- **图片与视频下载/播放通过**：模拟器阶段新上传的合成图像及 60 秒 H.264/AAC 视频此前未在真机下载，启用中转后完整图片在原生查看器显示。19,542,908 字节视频初始日志为零缓存；媒体切换后再次打开时已有 131,072 字节部分缓存，原生播放器在 **262,144 字节**即 prepared/playing。定位约 49.1 秒后实际 `seekDone=49100`、继续请求后续缺片，播放推进至约 52.4 秒并最终 `state=completed`。存在缓冲等待，不宣称全程无卡顿，也不从这一个视频推断全部编码可用。
+- **图片/视频回传通过**：仅把刚下载的合成图片与 60 秒视频经系统逐项确认保存，官方 Picker 仅选择这两项，从真机组成相册发送；Web 实时树确认两条云端媒体消息和说明，回传视频在 Web 内实际解码播放。图库其他素材未选择或上传。合成素材与测试消息保留供用户复验。
+- **分层验证与证据**：端侧源码与 SDK 编译沿用前述通过产物，本次没有功能源码修改或虚报重新编译；本轮真机 `install.sh`、`run.sh`、`device-layout.sh`、`screenshot.sh` 均指定用户真机，覆盖安装/启动及真实服务端收发分别通过。ignored `relay-real-install.log`、`relay-real-run.log`、`relay-real-restart.log`、`relay-real-events.log`、`relay-real-validation.json`、`relay-real-image.png`、`relay-real-video.png`、`relay-real-web-proof.png`。原始图库/系统日志/布局含隐私，不进入公开树。
+
+本结果限定用户确认未开 VPN 的这台真机、当时网络与未展开窗口。其他运营商/地区、蜂窝独立网络、弱网/后台、128 MiB/10 分钟断开恢复、通话、其他编码和其他形态仍未验收；EdgeOne WSS 仍后置。真机最终停在设置页且中转启用，账号与已保存配置保留。
 
 ## 当前开发：公开进度文档与合入准备（2026-10-31）
 
@@ -41,7 +136,7 @@ README 中英文新增现有功能、路线图、更新日志的独立文档与�
 
 ## 网络中转服务配置
 
-2026-10-31 用户最初要求配置两种服务，随后明确本轮先以 Cloudflare 完成。Cloudflare 独立 Worker  已部署，五个 Telegram DC 的实际 `req_pq_multi → resPQ` nonce 匹配、无鉴权 401、非 Telegram 目标 403 与 WebSocket 分帧拼接均已通过。EdgeOne 新加坡 Cloud Functions、CNAME 与免费证书已配置，HTTPS 健康检查通过，但实际 WSS 升级仍为 500，按用户指示后置，不能标为可用。8 项本机鉴权/目标限制/TLS 中间件测试通过。使用独立随机令牌和 WSS，不使用真实 Telegram 账号或消息；其他服务保持隔离。服务端源码与私有操作记录在工程外 Codex artifacts，未加入 Git。端侧 TDLib 到 WSS 的适配尚未实现，本轮未构建/安装 HAP，也未验证国内关闭系统 VPN 后的实际可达性。协议和验收边界见 [TELEGRAM_RELAY.md](TELEGRAM_RELAY.md)。
+2026-10-31 用户最初要求配置两种服务，随后明确本轮先以 Cloudflare 完成。Cloudflare 独立 Worker  已部署，五个 Telegram DC 的实际 `req_pq_multi → resPQ` nonce 匹配、无鉴权 401、非 Telegram 目标 403 与 WebSocket 分帧拼接均已通过。EdgeOne 新加坡 Cloud Functions、CNAME 与免费证书已配置，HTTPS 健康检查通过，但实际 WSS 升级仍为 500，按用户指示后置，不能标为可用。8 项本机鉴权/目标限制/TLS 中间件测试通过。使用独立随机令牌和 WSS，不使用真实 Telegram 账号或消息；其他服务保持隔离。服务端源码与私有操作记录在工程外 Codex artifacts，未加入 Git。端侧适配与模拟器验证见上方最新记录；国内关闭系统 VPN 后的实际可达性仍未验证。协议和验收边界见 [TELEGRAM_RELAY.md](TELEGRAM_RELAY.md)。
 
 ## 当前开发：消息展示与群聊内容对照
 
