@@ -55,6 +55,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    AppStorage.setOrCreate('mediaForeground', true);
     telegramService.setForeground(true);
     WindowAppearance.refreshSystemAppearance().catch(() => {
       hilog.warn(DOMAIN, 'Harlgram', 'Unable to restore system bar appearance');
@@ -72,6 +73,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onBackground(): void {
+    AppStorage.setOrCreate('mediaForeground', false);
     telegramService.setForeground(false);
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');

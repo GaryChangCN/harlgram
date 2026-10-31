@@ -24,7 +24,7 @@ function message(id = 50, chatId = 101, fields = {}) {
     content: { '@type': 'messageText', text: { '@type': 'formattedText', text: 'Fixture original' } }, ...fields };
 }
 function setup() {
-  const transport = new Transport(); const repository = new ChatRepository(); const client = new TelegramClient(transport, repository);
+  const transport = new Transport(); const repository = new ChatRepository(); const client = new TelegramClient(transport, repository); client.setMediaNetwork('wifi');
   client.start({ apiId: 12345, apiHash: '0'.repeat(32), databaseDirectory: '/fixture/db', filesDirectory: '/fixture/files', encryptionKey: 'Zml4dHVyZQ==' });
   transport.push({ '@type': 'updateAuthorizationState', authorization_state: { '@type': 'authorizationStateReady' } });
   transport.push({ '@type': 'updateNewChat', chat: chat(101) }); transport.push({ '@type': 'updateNewChat', chat: chat(202) });

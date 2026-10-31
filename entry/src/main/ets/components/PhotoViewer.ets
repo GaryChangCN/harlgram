@@ -6,6 +6,8 @@ import { photoPanBounds, clampPhotoOffset, pinchPhotoTransform } from '../model/
 export struct PhotoViewer {
   @Prop @Watch('reset') imagePath: string = '';
   onClose: () => void = () => {};
+  @Prop embedded: boolean = false;
+  onNavigate: (delta: number) => void = () => {};
   @State private zoom: number = 1;
   @State private offsetX: number = 0;
   @State private offsetY: number = 0;
@@ -189,7 +191,12 @@ export struct PhotoViewer {
               if (this.pinching || this.fingerCount(event) !== 1) { this.panNeedsRebase = true; }
             })
             .onActionUpdate((event: GestureEvent) => { this.updatePan(event); })
-            .onActionEnd(() => { this.panNeedsRebase = true; })
+            .onActionEnd((event: GestureEvent) => {
+              this.panNeedsRebase = true;
+              if (this.zoom === 1 && !this.pinching && Math.abs(event.offsetX) > 70 && Math.abs(event.offsetX) > Math.abs(event.offsetY) * 1.5) {
+                this.onNavigate(event.offsetX < 0 ? 1 : -1);
+              }
+            })
             .onActionCancel(() => { this.panNeedsRebase = true; }),
           TapGesture({ count: 2, fingers: 1, isFingerCountLimited: true, distanceThreshold: 8 })
             .onAction((event: GestureEvent) => {
@@ -200,10 +207,12 @@ export struct PhotoViewer {
             this.panNeedsRebase = true;
           })
         ))
+      if (!this.embedded) {
       Button({ type: ButtonType.Circle }) {
         Image($r('app.media.hg_close_white')).width(22).height(22)
       }.width(44).height(44).margin({ left: 16, top: 16 }).backgroundColor('#99303A44')
         .onClick(() => this.onClose()).accessibilityText('关闭图片预览')
-    }.width('100%').height('100%').padding({ top: this.topInset }).backgroundColor('#101418')
+      }
+    }.width('100%').height('100%').padding({ top: this.embedded ? 0 : this.topInset }).backgroundColor('#101418')
   }
 }

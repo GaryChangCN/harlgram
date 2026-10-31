@@ -78,3 +78,7 @@ bash -c 'source scripts/env.sh; ohpm install'
 当模拟器 HDC 文件传输卡住但 shell 可用时，可显式运行 `python3 scripts/install-via-shell.py <hdc路径> <目标> <signed.hap>`。该脚本仅在自有临时目录分块传输，比对完整 SHA-256 后由 bm install 覆盖安装；不会终止其他 HDC 客户端。正常传输仍优先 install.sh。
 
 安装、截图、布局采集均可设置 `HARLGRAM_HDC_TRANSFER=shell`，用于本轮模拟器的文件通道故障；普通模式仍优先HDC file命令。
+
+## 官网进度文档
+
+现有功能维护在 `docs/FEATURES.md` / `docs/FEATURES.en.md`，路线图维护在 `docs/ROADMAP.md` / `docs/ROADMAP.en.md`，更新日志维护在根目录 `CHANGELOG.md` / `CHANGELOG.en.md`。更新后执行 `python3 scripts/build-website.py`，提交 Markdown 和生成的官网页面。`python3 scripts/build-website.py --check` 检查是否同步；CI 会拒绝过期页面。官网只部署 `website/`，不上传整个工程。中文为默认语言，独立页面无需 JavaScript 也可阅读；英文通过原有语言按钮切换。

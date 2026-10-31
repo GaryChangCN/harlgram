@@ -9,12 +9,17 @@ const source = path.join(root, 'entry/src/main/ets');
 const output = path.join(root, 'artifacts/tests/js');
 const files = [
   'model/ChatModels.ts',
+  'model/MediaModels.ts',
+  'model/StorageModels.ts',
+  'model/VideoPlayback.ts',
+  'model/MessagePresentation.ts',
   'model/PhoneNumber.ts',
   'model/PhotoTransform.ts',
   'data/PhoneCountries.ts',
   'data/DemoData.ts',
   'data/ChatRepository.ts',
   'telegram/TdTypes.ts',
+  'telegram/RichMessage.ts',
   'telegram/TelegramClient.ts',
 ];
 fs.mkdirSync(output, { recursive: true });

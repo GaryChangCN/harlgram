@@ -24,9 +24,15 @@ Harlgram connects to Telegram through ArkTS / ArkUI, a C++ Node-API bridge, and 
 
 <p align="center"><sub>Privacy-redacted device captures composited into illustrative device frames. Unfolded-device validation is ongoing.</sub></p>
 
+## Project progress
+
+- [Features and validation scope](docs/FEATURES.en.md) · [Website features](https://garychangcn.github.io/harlgram/features.html)
+- [Roadmap and acceptance](docs/ROADMAP.en.md) · [Website roadmap](https://garychangcn.github.io/harlgram/roadmap.html)
+- [Changelog](CHANGELOG.en.md) · [Website changelog](https://garychangcn.github.io/harlgram/changelog.html)
+
 ## What works today
 
-This summary reflects evidence recorded on **2026-10-29**. Implementation, host tests, SDK compilation, device behavior, and server synchronization are separate levels of evidence. See [current status](docs/STATUS.md) and the [Web A parity matrix](docs/TELEGRAM_WEB_PARITY.md) for the detailed scope. Most engineering documents are currently in Chinese.
+This summary reflects evidence recorded on **2026-10-31**. Implementation, host tests, SDK compilation, device behavior, and server synchronization are separate levels of evidence. See [current status](docs/STATUS.md) and the [Web A parity matrix](docs/TELEGRAM_WEB_PARITY.md) for the detailed scope. Most engineering documents are currently in Chinese.
 
 | Area | Current scope and limits |
 | --- | --- |
@@ -34,7 +40,9 @@ This summary reflects evidence recorded on **2026-10-29**. Implementation, host 
 | Chats and contacts | Real main chat list, avatars, unread counts, draft previews, history pagination, group senders, and dates. Existing contacts can open private chats. Current filters and search operate on loaded data only. |
 | Text and drafts | Real text messaging, pending/failed states, and plain-text drafts. Cross-client behavior and draft preservation have evidence; full rich drafts and concurrent cross-client editing remain incomplete. |
 | Message actions | Reply, edit, forward, delete, and copy entries follow server-provided permissions. Text edit, reply, forwarding to Saved Messages, and deletion for self were tested on a physical device and checked in Web A. Other content types and permission cases are not covered by those results. Copy has not yet been exercised on a device. |
-| Photos | A system PhotoViewPicker selects one JPEG/PNG, up to 10,000,000 bytes, for preview and explicit user sending. Receiving, single-photo viewing, double-tap zoom, and panning are implemented. A synthetic photo has cross-client delivery evidence; continuous two-finger gestures still need device validation. |
+| Photos and videos | Select up to 10 JPEG/PNG photos and MP4/MOV videos; remove items, add a caption, and send an album. Includes album grids, previous/next browsing, photo zoom, progressive video streaming, native AVPlayer playback, uncached seeking, temporary 2× on hold, ±30-second controls and seven playback speeds, and confirmed gallery export. Mixed albums were verified in both directions between a physical device and Web A. See [media scope and limits](docs/MEDIA.md). |
+| Message display | Native formatted text, common RichMessage blocks, group avatars/grouping, forwarding/reply previews and aspect-aware media/albums; compared across three real groups. Complex blocks and full content-type parity remain incomplete; see [display scope](docs/MESSAGE_DISPLAY.md). |
+| Storage management | Per-account category statistics and selective/per-chat cache clearing, chat-type retention, cache caps, network-specific photo/video/animation downloads, and traffic totals. Real statistics and Saved Messages video-cache clearing verified on a physical device. Background and upload-staging cleanup remain incomplete; see [storage details](docs/STORAGE_MANAGEMENT.md). |
 | Native appearance | Official ArkUI navigation, floating tabs, and system menus; light, dark, and system appearance. Preference retention across updates/restarts and following Control Center changes were verified on a physical device. |
 | Foldable layout | Static physical-device captures show single-column and unfolded two-pane layouts on Pura X Max. This does not establish complete fold transitions, rotation, split-screen behavior, or state preservation. |
 | Offline preview | Fictional fixtures in an isolated local mode for UI development. Local changes are not cloud messages. |
@@ -42,8 +50,8 @@ This summary reflects evidence recorded on **2026-10-29**. Implementation, host 
 ### Known gaps
 
 - **Discovery and organization:** server-side global/in-chat search, actual cloud folders, archive, full profiles, and shared media.
-- **Messages and media:** selection, message pinning, reactions, full rich text, stickers/GIFs, albums, files, voice, video, and complete download/cache controls.
-- **Account and platform features:** multiple accounts, group/channel management, full privacy/security settings, background notifications/push, voice/video calls, Stories, and more.
+- **Messages and media:** selection, message pinning, reactions, full rich text, stickers/GIFs, files, voice, original-file/quality editing, further codec/streaming failure cases, and complete download controls, background cache cleanup, and upload-staging reclamation.
+- **Account and platform features:** inactive-account synchronization/notifications and further isolation checks, group/channel management, full privacy/security settings, background notifications/push, voice/video calls, Stories, and more.
 - **Further validation:** precise cross-page navigation, complete read semantics, photo-caption editing, additional permission/error cases; tablets, large screens, full fold transitions, landscape, and split screen have not completed acceptance testing. The API 24 compatibility path also lacks corresponding device evidence.
 
 There is no background push pipeline yet; do not depend on this developer preview for important notifications. The [roadmap](docs/ROADMAP.md) describes the remaining scope. Core messaging is not full Web A parity.
