@@ -4,7 +4,7 @@
 
 <h1 align="center">Harlgram</h1>
 
-<p align="center">A native Telegram client for HarmonyOS NEXT, built with ArkUI.</p>
+<p align="center">An open-source native third-party Telegram client for HarmonyOS NEXT, built with ArkUI + TDLib and in active development.</p>
 
 <p align="center">
   <a href="README.md">简体中文</a> · English ·

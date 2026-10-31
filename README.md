@@ -4,7 +4,7 @@
 
 <h1 align="center">Harlgram</h1>
 
-<p align="center">用原生 ArkUI 构建的 HarmonyOS NEXT Telegram 第三方客户端。</p>
+<p align="center">开源的鸿蒙 HarmonyOS NEXT 原生 Telegram 第三方客户端，基于 ArkUI + TDLib，持续开发中。</p>
 
 <p align="center">
   简体中文 · <a href="README.en.md">English</a> ·
