@@ -4,14 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101114">
-  <meta name="description" content="Harlgram：面向 HarmonyOS NEXT 的开源原生 Telegram 第三方客户端。ArkUI、TDLib，以及可接力的 AI-native 开发工作流。">
+  <meta name="description" content="Harlgram 是开源的鸿蒙 HarmonyOS NEXT 原生 Telegram 第三方客户端，基于 ArkUI + TDLib，持续开发中。查看功能进度、界面预览和源码构建指南。">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Harlgram — Telegram，以鸿蒙的方式。">
-  <meta property="og:description" content="面向 HarmonyOS NEXT 的开源原生 Telegram 第三方客户端。">
+  <meta property="og:title" content="Harlgram｜鸿蒙 HarmonyOS NEXT 原生 Telegram 客户端">
+  <meta property="og:description" content="Harlgram 是开源的鸿蒙 HarmonyOS NEXT 原生 Telegram 第三方客户端，基于 ArkUI + TDLib，持续开发中。查看功能进度、界面预览和源码构建指南。">
   <meta property="og:url" content="https://garychangcn.github.io/harlgram/">
   <meta property="og:image" content="https://garychangcn.github.io/harlgram/assets/icon.png">
-  <title>Harlgram — Telegram，以鸿蒙的方式。</title>
+  <title>Harlgram｜鸿蒙 HarmonyOS NEXT 原生 Telegram 客户端</title>
   <link rel="canonical" href="https://garychangcn.github.io/harlgram/">
+  <link rel="sitemap" type="application/xml" href="https://garychangcn.github.io/harlgram/sitemap.xml">
   <link rel="icon" href="assets/icon.png" type="image/png">
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
@@ -35,10 +36,11 @@
   <header class="site-header">
     <div class="container header-inner">
       <a class="brand" href="#" aria-label="Harlgram"><img src="assets/icon.png" width="36" height="36" alt=""><span>Harlgram</span></a>
-      <nav class="main-nav" aria-label="主导航" data-i18n-aria="navigation">
-        <a href="#features" data-i18n="nav.features">功能</a>
-        <a href="#progress" data-i18n="nav.progress">进展</a>
-        <a href="#develop" data-i18n="nav.develop">开发</a>
+      <nav class="main-nav" aria-label="项目导航" data-i18n-aria="navigation">
+        <a href="index.html" data-i18n="nav.home" aria-current="page">概览</a>
+        <a href="features.html" data-i18n="nav.features">现有功能</a>
+        <a href="roadmap.html" data-i18n="nav.roadmap">路线图</a>
+        <a href="changelog.html" data-i18n="nav.changelog">更新日志</a>
       </nav>
       <div class="header-actions">
         <div class="language-switch" role="group" aria-label="语言 / Language">
@@ -55,7 +57,7 @@
       <div class="hero-copy">
         <p class="eyebrow"><span class="status-dot"></span> HARMONYOS NEXT / OPEN SOURCE</p>
         <h1 id="hero-title"><span data-i18n="hero.title1">Telegram，</span><br><span class="silver-text" data-i18n="hero.title2">以鸿蒙的方式。</span></h1>
-        <p class="hero-description" data-i18n="hero.description">为 HarmonyOS NEXT 而写的原生第三方客户端。用 ArkUI 呈现熟悉的聊天，用 TDLib 连接真实的 Telegram。</p>
+        <p class="hero-description" data-i18n="hero.description">面向鸿蒙 HarmonyOS NEXT 的开源原生 Telegram 第三方客户端。用 ArkUI 呈现熟悉的聊天，用 TDLib 连接真实的 Telegram。</p>
         <div class="hero-actions">
           <a class="button button-primary" href="https://github.com/GaryChangCN/harlgram"><svg><use href="#github"/></svg><span data-i18n="hero.source">查看源码</span><svg class="button-arrow"><use href="#external"/></svg></a>
           <a class="button button-secondary" href="#develop"><span data-i18n="hero.build">开始构建</span><svg><use href="#arrow"/></svg></a>
@@ -80,7 +82,7 @@
         <article class="feature-card"><svg class="feature-icon"><use href="#key"/></svg><h3 data-i18n="feature.auth.title">真实账号，真实连接</h3><p data-i18n="feature.auth.text">手机号、验证码、二步验证与邮箱验证；国家和区号独立选择，登录会话可恢复。</p><span class="feature-detail" data-i18n="feature.auth.detail">TDLib 认证状态驱动</span></article>
         <article class="feature-card"><svg class="feature-icon"><use href="#chat"/></svg><h3 data-i18n="feature.chats.title">熟悉的会话节奏</h3><p data-i18n="feature.chats.text">真实头像、未读、联系人与收藏夹。已加载会话可搜索、筛选、置顶和静音。</p><span class="feature-detail" data-i18n="feature.chats.detail">本地筛选 · 非全局搜索</span></article>
         <article class="feature-card"><svg class="feature-icon"><use href="#edit"/></svg><h3 data-i18n="feature.messages.title">把消息处理好</h3><p data-i18n="feature.messages.text">文本收发、回复、编辑、单条转发与删除。长按菜单按服务端权限开放操作。</p><span class="feature-detail" data-i18n="feature.messages.detail">发送中、成功与失败分开呈现</span></article>
-        <article class="feature-card"><svg class="feature-icon"><use href="#photo"/></svg><h3 data-i18n="feature.photos.title">图片，点开就看</h3><p data-i18n="feature.photos.text">系统选图、发送前预览、单张图片收发，以及全屏查看、双击缩放和拖动。</p><span class="feature-detail" data-i18n="feature.photos.detail">选择图片后，由你确认发送</span></article>
+        <article class="feature-card"><svg class="feature-icon"><use href="#photo"/></svg><h3 data-i18n="feature.photos.title">图片，点开就看</h3><p data-i18n="feature.photos.text">最多 10 项图片/视频混选、预览与相册收发；图片缩放，视频边下边播、未缓存定位和倍速手势。</p><span class="feature-detail" data-i18n="feature.photos.detail">选择图片后，由你确认发送</span></article>
         <article class="feature-card"><svg class="feature-icon"><use href="#draft"/></svg><h3 data-i18n="feature.drafts.title">留住没说完的话</h3><p data-i18n="feature.drafts.text">文本草稿保存、历史分页、群发送者与日期。回复和编辑不覆盖原来的普通草稿。</p><span class="feature-detail" data-i18n="feature.drafts.detail">完整富草稿与跨端边界仍在完善</span></article>
         <article class="feature-card"><svg class="feature-icon"><use href="#layers"/></svg><h3 data-i18n="feature.native.title">属于鸿蒙的交互</h3><p data-i18n="feature.native.text">官方导航、菜单、弹层与玻璃底栏。浅色、深色或跟随系统，兼顾键盘和安全区。</p><span class="feature-detail" data-i18n="feature.native.detail">原生 ArkUI · 无 WebView 外壳</span></article>
       </div>
@@ -99,7 +101,7 @@
           <div class="milestone"><span class="milestone-marker marker-current"><span></span></span><div><h3 data-i18n="progress.two.title">现在：完善手机体验</h3><p data-i18n="progress.two.text">先把单栏聊天、草稿、媒体和消息操作做好。功能以 Telegram Web A 手机界面为对齐基线。</p></div></div>
           <div class="milestone"><span class="milestone-marker marker-next">03</span><div><h3 data-i18n="progress.three.title">下一步：逐项补全能力</h3><p data-i18n="progress.three.text">服务器搜索、文件夹与归档、完整媒体、群管理、通知后台和通话，分阶段实现与验收。</p></div></div>
         </div>
-        <aside class="limits-card"><span class="outline-tag" data-i18n="limits.badge">开发预览</span><h3 data-i18n="limits.title">现在还不是完整替代品。</h3><ul><li data-i18n="limits.search">搜索范围限已加载会话，尚无服务器全局搜索。</li><li data-i18n="limits.media">语音、视频、文件、贴纸与 GIF 的完整交互尚未实现。</li><li data-i18n="limits.platform">通知后台、通话、多账号及完整群管理仍在路线图中。</li><li data-i18n="limits.device">当前优先手机单栏；展开形态、平板和多窗口未完成验收。</li></ul><a class="text-link" href="https://github.com/GaryChangCN/harlgram/blob/main/docs/TELEGRAM_WEB_PARITY.md"><span data-i18n="limits.link">逐项查看功能差距</span><svg><use href="#arrow"/></svg></a></aside>
+        <aside class="limits-card"><span class="outline-tag" data-i18n="limits.badge">开发预览</span><h3 data-i18n="limits.title">现在还不是完整替代品。</h3><ul><li data-i18n="limits.search">搜索范围限已加载会话，尚无服务器全局搜索。</li><li data-i18n="limits.media">图片、相册和视频已实现；语音、任意文件、贴纸与 GIF 的完整交互仍待完善。</li><li data-i18n="limits.platform">多账户切换已支持；非活动账户通知、后台推送、通话及完整群管理仍待实现。</li><li data-i18n="limits.device">当前优先手机单栏；展开形态、平板和多窗口未完成验收。</li></ul><a class="text-link" href="https://github.com/GaryChangCN/harlgram/blob/main/docs/TELEGRAM_WEB_PARITY.md"><span data-i18n="limits.link">逐项查看功能差距</span><svg><use href="#arrow"/></svg></a></aside>
       </div>
     </section>
 

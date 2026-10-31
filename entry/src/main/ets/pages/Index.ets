@@ -1,3 +1,4 @@
+import { StoragePage } from '../components/StoragePage';
 import { common } from '@kit.AbilityKit';
 import { KeyboardAvoidMode, SymbolGlyphModifier } from '@kit.ArkUI';
 import { CommonModifier } from '@ohos.arkui.modifier';
@@ -6,13 +7,18 @@ import { AppearanceMode } from '../model/Appearance';
 import { UserAvatar } from '../components/UserAvatar';
 import { ComposerContextBar } from '../components/ComposerContextBar';
 import { ForwardChatSheet } from '../components/ForwardChatSheet';
-import { PhotoViewer } from '../components/PhotoViewer';
+import { AttachmentService } from '../services/AttachmentService';
+import { MessageText } from '../components/MessageText';
+import { albumLayout, singleMediaSize, messagesGrouped, safeMessageLink, MediaFrame } from '../model/MessagePresentation';
+import { MediaViewer } from '../components/MediaViewer';
+import { MediaAttachment, mediaAlbumAt, mediaTime, mediaBytes } from '../model/MediaModels';
 import { NativeBottomTabsStyle } from '../components/NativeBottomTabsStyle';
 import { SystemAppearanceObserver } from '../components/SystemAppearanceObserver';
 import { TELEGRAM_API_ID } from '../config/TelegramBuildConfig';
-import { ChatSummary, ChatMessage, Contact, MessagePermissions } from '../model/ChatModels';
+import { ChatSummary, ChatMessage, Contact, MessagePermissions, RichContentBlock } from '../model/ChatModels';
 import { chatRepository } from '../data/ChatRepository';
 import { LocalStore } from '../services/LocalStore';
+import { AccountProfile } from '../services/AccountStore';
 import { telegramService, TelegramState } from '../services/TelegramService';
 import { TelegramHistoryState } from '../telegram/TdTypes';
 import { PhoneCountry, PHONE_COUNTRIES, findPhoneCountry, searchPhoneCountries,
@@ -22,6 +28,7 @@ interface PhotoDraft {
   chatId: string;
   path: string;
   caption: string;
+  attachments: MediaAttachment[];
 }
 
 interface ComposerAction {
@@ -52,6 +59,7 @@ interface MessageDialogButton { text: string; color: string; }
 struct Index {
   @StorageProp('harlgram.darkMode') @Watch('syncWindowBackground') private darkMode: boolean = false;
   @StorageProp('harlgram.appearanceMode') private appearanceMode: AppearanceMode = 'system';
+  @State private storageRoute: string = 'storage';
   @State @Watch('syncWindowBackground') private currentTab: number = 0;
   @State @Watch('syncWindowBackground') private page: string = 'welcome';
   @State private isTelegram: boolean = false;
@@ -66,10 +74,16 @@ struct Index {
   @State private countryPickerVisible: boolean = false;
   @State private authCode: string = '';
   @State private password: string = '';
+  @State private registrationFirst: string = '';
+  @State private registrationLast: string = '';
+  @State private registrationAccepted: boolean = false;
   @State private email: string = '';
   @State private emailCode: string = '';
   @State private authSubmitting: boolean = false;
   @State private localError: string = '';
+  @State private accountProfiles: AccountProfile[] = [];
+  @State private activeAccountId: string = 'primary';
+  @State private accountSwitching: boolean = false;
   @State private telegram: TelegramState = { phase: 'idle', error: '', connection: '', ready: false };
   @State private searchText: string = '';
   @State private chatSearchVisible: boolean = false;
@@ -97,8 +111,8 @@ struct Index {
   @State private forwardMessageSource: ChatMessage | undefined = undefined;
   @State private forwardBusy: boolean = false;
   @State private forwardError: string = '';
-  @State private photoViewerVisible: boolean = false;
-  @State private photoViewerPath: string = '';
+  @State @Watch('mediaPresentationChanged') private photoViewerVisible: boolean = false;
+  @State private mediaViewerId: string = '';
   @State private historyState: TelegramHistoryState = { loading: false, hasMore: true, loaded: false, error: '' };
   @State private activeChat: ChatSummary = {
     id: '', title: '', subtitle: '', avatar: '', color: '#268BDE', kind: 'private',
@@ -131,6 +145,8 @@ struct Index {
   private attachmentEpoch: number = 0;
   private pendingBottomChatId: string = '';
   private wasAtBottom: boolean = true;
+  private userMessageScrolling: boolean = false;
+  private bottomLayoutRevision: number = 0;
   private messageContentHeight: number = 0;
   private messageViewportHeight: number = 0;
   private olderAnchorChatId: string = '';
@@ -147,6 +163,7 @@ struct Index {
   private pendingLocateMessageId: string = '';
   private replyLocateGeneration: number = 0;
   private messageMenuOpen: boolean = false;
+  private returnToAccountManagement: boolean = false;
   private pendingComposerFocusChatId: string = '';
 
   aboutToAppear(): void {
@@ -164,7 +181,13 @@ struct Index {
       this.ready = true;
       telegramService.subscribe((state: TelegramState) => {
         const becameReady = state.ready && !this.telegram.ready;
+        if (state.error.length > 0 && state.error !== this.telegram.error) {
+          this.getUIContext().getFocusController().clearFocus();
+        }
+        if (state.phase !== this.telegram.phase) { this.registrationAccepted = false; }
         this.telegram = state;
+        this.accountProfiles = telegramService.accounts();
+        this.activeAccountId = telegramService.activeAccount();
         this.authSubmitting = state.submitting === true;
         if (state.phase !== 'phone') { this.countryPickerVisible = false; }
         if (state.phase === 'closed') {
@@ -178,7 +201,6 @@ struct Index {
           this.forwardBusy = false;
           this.pendingMessageActions = [];
           this.photoViewerVisible = false;
-          this.photoViewerPath = '';
           this.pendingBottomChatId = '';
           this.olderAnchorChatId = '';
           this.cancelPendingDraft();
@@ -192,18 +214,24 @@ struct Index {
           this.messages = [];
           this.draft = '';
           this.phone = '';
+          this.registrationFirst = '';
+          this.registrationLast = '';
+          this.registrationAccepted = false;
           this.apiHash = '';
           this.password = '';
           this.authCode = '';
           this.emailCode = '';
-          this.page = 'welcome';
-          this.currentTab = 0;
+          this.page = this.returnToAccountManagement ? 'accounts' : 'welcome';
+          this.currentTab = this.returnToAccountManagement ? 2 : 0;
         } else if (state.ready) {
           this.isTelegram = true;
           this.apiHash = '';
           this.password = '';
           this.authCode = '';
           this.emailCode = '';
+          if (becameReady && this.returnToAccountManagement) {
+            this.page = 'accounts'; this.currentTab = 2; this.returnToAccountManagement = false;
+          }
           if (becameReady && (this.page === 'account' || this.page === 'welcome')) {
             this.page = 'home';
             this.currentTab = 0;
@@ -212,6 +240,10 @@ struct Index {
           this.isTelegram = true;
           this.page = 'account';
         }
+        if (this.returnToAccountManagement && !state.ready && ['phone', 'code', 'registration', 'password', 'email', 'emailCode'].includes(state.phase)) {
+          this.page = 'account'; this.returnToAccountManagement = false;
+        }
+        if (state.error.length > 0) { this.returnToAccountManagement = false; }
         this.refresh();
       });
       telegramService.resume(context).catch(() => this.localError = '恢复登录状态失败，请重新连接');
@@ -219,6 +251,7 @@ struct Index {
   }
 
   aboutToDisappear(): void {
+    WindowAppearance.setMediaOverlay(false).catch(() => {});
     this.chatSearchNeedsFocus = false;
     this.persistDraft();
     if (this.isTelegram && this.page === 'chat') { telegramService.leaveChat(); }
@@ -230,6 +263,7 @@ struct Index {
   }
 
   onBackPress(): boolean {
+    if (this.page === 'storage' && this.storageRoute !== 'storage') { this.storageRoute = 'storage'; return true; }
     if (this.photoViewerVisible) { this.photoViewerVisible = false; return true; }
     if (this.forwardSheetVisible) { this.forwardSheetVisible = false; return true; }
     if (this.countryPickerVisible) { this.countryPickerVisible = false; return true; }
@@ -263,7 +297,7 @@ struct Index {
   }
 
   private messageRenderKey(message: ChatMessage): string {
-    return `${message.chatId}:${message.id}:${message.status}:${this.fingerprint(`${message.mediaPath || ''}|${message.mediaFileId || 0}|${message.mediaKind || ''}|${message.text}|${message.time}|${message.outgoing}|${message.date || 0}|${message.senderName || ''}|${message.senderColor || ''}|${message.editDate || 0}|${message.replyPreview || ''}|${message.replySenderName || ''}`)}`;
+    return `${message.chatId}:${message.id}:${message.status}:${this.fingerprint(`${message.richTruncated}|${message.richLoading}|${message.richError || ''}|${JSON.stringify(message.richBlocks || [])}|${JSON.stringify(message.entities || [])}|${message.stickerPath || ''}|${message.largeEmoji}|${message.forwardName || ''}|${message.senderAvatarPath || ''}|${message.read}|${message.service}|${JSON.stringify(message.linkPreview || null)}|${message.mediaAlbumId || ''}|${message.mediaProgress || 0}|${message.mediaDownloading}|${message.thumbnailPath || ''}|${message.mediaError || ''}|${message.mediaPath || ''}|${message.mediaFileId || 0}|${message.mediaKind || ''}|${message.text}|${message.time}|${message.outgoing}|${message.date || 0}|${message.senderName || ''}|${message.senderColor || ''}|${message.editDate || 0}|${message.replyThumbnailPath || ''}|${message.replyPreview || ''}|${message.replySenderName || ''}`)}`;
   }
 
   private messageDayKey(message: ChatMessage): string {
@@ -313,8 +347,14 @@ struct Index {
   private line(): string { return this.darkMode ? '#253443' : '#EEF2F6'; }
   private softBlue(): string { return this.darkMode ? '#203B55' : '#EAF4FF'; }
   private windowBackground(): string {
-    return this.page === 'account' || (this.page === 'home' && this.currentTab === 2) ?
+    if (this.photoViewerVisible) { return '#101418'; }
+    return this.page === 'storage' || this.page === 'accounts' || this.page === 'account' || (this.page === 'home' && this.currentTab === 2) ?
       this.pageBackground() : this.surface();
+  }
+
+  private mediaPresentationChanged(): void {
+    WindowAppearance.setMediaOverlay(this.photoViewerVisible).catch(() => {});
+    this.syncWindowBackground();
   }
 
   private syncWindowBackground(): void {
@@ -424,10 +464,17 @@ struct Index {
       this.olderMessagesArrived = false;
       this.olderAnchorChatId = '';
       this.messageScroller.scrollTo({ xOffset: 0, yOffset: offset, animation: false });
-    } else if (this.pendingBottomChatId === this.activeChat.id && this.messages.length > 0) {
+    } else if ((this.pendingBottomChatId === this.activeChat.id || this.wasAtBottom) && this.messages.length > 0) {
       this.pendingBottomChatId = '';
-      this.messageScroller.scrollTo({ xOffset: 0, yOffset: height, animation: false });
       this.wasAtBottom = true;
+      const chatId = this.activeChat.id;
+      const revision = ++this.bottomLayoutRevision;
+      setTimeout(() => {
+        if (this.page === 'chat' && this.activeChat.id === chatId && this.wasAtBottom &&
+          !this.userMessageScrolling && this.olderAnchorChatId.length === 0 && revision === this.bottomLayoutRevision) {
+          this.messageScroller.scrollEdge(Edge.Bottom);
+        }
+      }, 16);
     }
     this.loadOneShortHistoryPage();
   }
@@ -459,6 +506,7 @@ struct Index {
     const fromUser = source === ScrollSource.DRAG || source === ScrollSource.FLING ||
       source === ScrollSource.OTHER_USER_INPUT || source === ScrollSource.SCROLL_BAR ||
       source === ScrollSource.SCROLL_BAR_FLING;
+    if (fromUser) { this.userMessageScrolling = true; }
     if (!fromUser || yOffset >= 0) { return; }
     this.historyScrollArmed = true;
     if (this.messageScroller.currentOffset().yOffset <= 24) { this.loadHistoryAtStart(); }
@@ -516,9 +564,9 @@ struct Index {
   private mediaSource(path: string): string { return path.startsWith('/') ? `file://${path}` : path; }
   private messageMaxWidth(): number {
     const paneWidth = this.isWide() ? this.viewportWidth - this.navigationWidth() : this.viewportWidth;
-    return Math.min(520, Math.max(120, (paneWidth - 34) * 0.82));
+    return Math.min(420, Math.max(120, paneWidth - (this.activeChat.kind === 'group' ? 64 : 32)));
   }
-  private messageMediaWidth(): number { return Math.min(280, this.messageMaxWidth() - 26); }
+  private messageMediaWidth(): number { return Math.min(400, this.messageMaxWidth()); }
   private selectedPhotoPath(): string {
     return this.photoDrafts.find((item: PhotoDraft) => item.chatId === this.activeChat.id)?.path || '';
   }
@@ -527,8 +575,8 @@ struct Index {
   }
   private hasSelectedPhoto(): boolean { return this.selectedPhotoPath().length > 0; }
   private messageCaption(message: ChatMessage): string {
-    return message.contentKind === 'photo' || message.mediaKind === 'photo' ?
-      (message.caption !== undefined ? message.caption : message.text.replace(/^\[图片\]\s?/, '')) : message.text;
+    return message.contentKind === 'photo' || !!message.mediaKind ?
+      (message.caption !== undefined ? message.caption : message.text.replace(/^\[(图片|视频)\]\s?/, '')) : message.text;
   }
 
   private currentComposerAction(): ComposerAction | undefined {
@@ -654,7 +702,7 @@ struct Index {
     this.setComposerAction({ chatId: message.chatId, messageId: message.id, mode: mode,
       title: mode === 'edit' ? '编辑消息' : (message.senderName ? `回复 ${message.senderName}` : '回复消息'),
       preview: this.messageCaption(message) || '图片', text: this.messageCaption(message),
-      caption: message.contentKind === 'photo' || message.mediaKind === 'photo',
+      caption: message.contentKind === 'photo' || message.contentKind === 'video' || !!message.mediaKind,
       token: '', submittedText: '', error: '' });
     this.focusComposer(message.chatId);
   }
@@ -804,14 +852,14 @@ struct Index {
     });
     this.pendingMessageActions = pending;
   }
-  private setPhotoDraft(chatId: string, path: string, caption: string): void {
+  private setPhotoDraft(chatId: string, path: string, caption: string, attachments: MediaAttachment[]): void {
     this.photoDrafts = this.photoDrafts.filter((item: PhotoDraft) => item.chatId !== chatId);
-    if (path.length > 0) { this.photoDrafts = this.photoDrafts.concat([{ chatId: chatId, path: path, caption: caption.slice(0, 1024) }]); }
+    if (path.length > 0) { this.photoDrafts = this.photoDrafts.concat([{ chatId: chatId, path: path, caption: caption.slice(0, 1024), attachments: attachments }]); }
   }
   private updatePhotoCaption(caption: string): void {
     const chatId = this.activeChat.id;
     const path = this.selectedPhotoPath();
-    if (path.length > 0) { this.setPhotoDraft(chatId, path, caption); }
+    if (path.length > 0) { this.setPhotoDraft(chatId, path, caption, this.selectedAttachments()); }
   }
   private chooseImage(): void {
     if (!this.isTelegram) { this.toast('请登录 Telegram 后发送图片'); return; }
@@ -820,17 +868,17 @@ struct Index {
     const epoch = this.attachmentEpoch;
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     this.choosingImage = true;
-    telegramService.pickImage(context).then((path: string) => {
-      if (path.length === 0 || epoch !== this.attachmentEpoch || !this.isTelegram) { return; }
+    telegramService.pickMedia(context).then((items: MediaAttachment[]) => {
+      if (items.length === 0 || epoch !== this.attachmentEpoch || !this.isTelegram) { return; }
       const prior = this.photoDrafts.find((item: PhotoDraft) => item.chatId === chatId);
-      this.setPhotoDraft(chatId, path, prior ? prior.caption : '');
-    }).catch(() => this.toast('未能选择图片，请确认图片不超过 10MB')).finally(() => { this.choosingImage = false; });
+      this.setPhotoDraft(chatId, items[0].path, prior ? prior.caption : '', items);
+    }).catch((error: Error) => this.toast(error.message || '未能选择图片或视频')).finally(() => { this.choosingImage = false; });
   }
   private sendSelectedPhoto(): void {
     const chatId = this.activeChat.id;
     const selected = this.photoDrafts.find((item: PhotoDraft) => item.chatId === chatId);
     if (!this.isTelegram || !selected) { return; }
-    if (telegramService.sendPhoto(chatId, selected.path, selected.caption)) {
+    if (telegramService.sendMedia(chatId, selected.attachments, selected.caption)) {
       this.photoDrafts = this.photoDrafts.filter((item: PhotoDraft) => item.chatId !== chatId);
       this.refresh();
       this.pendingBottomChatId = chatId;
@@ -841,28 +889,15 @@ struct Index {
     if (message.status !== 'failed' || message.chatId !== this.activeChat.id || this.page !== 'chat') { return; }
     const chatId = message.chatId;
     const text = this.messageCaption(message);
-    if (message.mediaKind === 'photo' && message.mediaPath) {
-      const path = message.mediaPath;
-      const currentPath = this.selectedPhotoPath();
-      const currentCaption = this.selectedPhotoCaption();
-      if (currentPath.length === 0 || (currentPath === path && currentCaption === text)) {
-        this.setPhotoDraft(chatId, path, text);
-        this.getUIContext().getFocusController().requestFocus('message-input');
-        return;
-      }
-      const epoch = this.attachmentEpoch;
-      this.getUIContext().getPromptAction().showDialog({
-        title: '替换当前图片？',
-        message: '当前图片和说明尚未发送。使用这条失败消息会替换它们。',
-        buttons: [{ text: '取消', color: '#718398' }, { text: '使用此图片', color: '#268BDE' }]
-      }).then((result) => {
-        if (result.index === 1 && this.page === 'chat' && this.activeChat.id === chatId &&
-          epoch === this.attachmentEpoch && this.selectedPhotoPath() === currentPath &&
-          this.selectedPhotoCaption() === currentCaption) {
-          this.setPhotoDraft(chatId, path, text);
-          this.getUIContext().getFocusController().requestFocus('message-input');
-        }
-      }).catch(() => {});
+    if (message.mediaKind && message.mediaPath) {
+      if (this.hasSelectedPhoto()) { this.toast('请先发送或取消当前附件'); return; }
+      const group = this.messages.filter((item: ChatMessage) => item.status === 'failed' &&
+        (message.mediaAlbumId ? item.mediaAlbumId === message.mediaAlbumId : item.id === message.id));
+      const attachments: MediaAttachment[] = group.map((item: ChatMessage): MediaAttachment => ({
+        path: item.mediaPath || '', kind: item.mediaKind === 'video' ? 'video' : 'photo',
+        width: item.mediaWidth || 0, height: item.mediaHeight || 0, duration: item.mediaDuration || 0, size: item.mediaSize || 1
+      }));
+      this.setPhotoDraft(chatId, attachments[0].path, this.messageCaption(group[0]), attachments);
       return;
     }
     if (this.draft.length === 0 || this.draft === text) {
@@ -912,6 +947,8 @@ struct Index {
     this.activeChat = chat;
     this.pendingBottomChatId = chat.id;
     this.wasAtBottom = true;
+    this.userMessageScrolling = false;
+    this.bottomLayoutRevision++;
     this.messageContentHeight = 0;
     this.messageViewportHeight = 0;
     this.olderAnchorChatId = '';
@@ -1032,6 +1069,28 @@ struct Index {
     return '离线预览';
   }
 
+  private changeAccount(accountId: string = ''): void {
+    if (this.accountSwitching) { return; }
+    if (this.photoDrafts.length > 0 || this.composerActions.length > 0) {
+      this.toast('请先完成或取消待发送图片、回复和编辑'); return;
+    }
+    this.persistDraft();
+    this.returnToAccountManagement = this.page === 'accounts' && accountId.length > 0;
+    this.accountSwitching = true;
+    this.localError = '';
+    this.searchText = '';
+    this.contactSearch = '';
+    this.selectedFilter = 0;
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    const operation = accountId.length > 0 ? telegramService.switchAccount(context, accountId) : telegramService.addAccount(context);
+    operation.catch(() => this.toast('账户切换失败，请重试')).finally(() => {
+      this.accountSwitching = false;
+      this.accountProfiles = telegramService.accounts();
+      this.activeAccountId = telegramService.activeAccount();
+      if (!this.telegram.ready && !this.returnToAccountManagement) { this.page = 'account'; }
+    });
+  }
+
   private confirmLogOut(): void {
     this.getUIContext().getPromptAction().showDialog({
       title: '退出 Telegram 账号',
@@ -1085,6 +1144,8 @@ struct Index {
       if (this.authCode.trim().length === 0) { this.localError = '请输入 Telegram 验证码'; return; }
       this.authSubmitting = true;
       telegramService.setCode(this.authCode.trim());
+    } else if (phase === 'registration') {
+      telegramService.register(this.registrationFirst, this.registrationLast, this.registrationAccepted);
     } else if (phase === 'password') {
       if (this.password.length === 0) { this.localError = '请输入两步验证密码'; return; }
       this.authSubmitting = true;
@@ -1156,6 +1217,7 @@ struct Index {
 
   private authTitle(): string {
     const phase = this.telegram.phase;
+    if (phase === 'registration') { return '创建你的账号'; }
     if (phase === 'phone') { return '你的手机号码'; }
     if (phase === 'code') { return '输入验证码'; }
     if (phase === 'password') { return '两步验证'; }
@@ -1171,8 +1233,16 @@ struct Index {
 
   private authHint(): string {
     const phase = this.telegram.phase;
+    if (phase === 'registration') { return '手机号已验证，请填写姓名并阅读服务条款。'; }
     if (phase === 'phone') { return '请选择国家或地区，输入你的手机号码。'; }
-    if (phase === 'code') { return '验证码可能发送到已登录的 Telegram 客户端，或通过短信送达。'; }
+    if (phase === 'code') {
+      const method = this.telegram.codeDelivery || '';
+      if (method === 'authenticationCodeTypeTelegramMessage') { return '请在其他已登录的 Telegram 设备中查看验证码。'; }
+      if (method.includes('Sms')) { return '请查看手机收到的短信验证码。'; }
+      if (method === 'authenticationCodeTypeCall') { return '请接听 Telegram 来电获取验证码。'; }
+      if (method.includes('FlashCall') || method.includes('MissedCall')) { return '请按 Telegram 来电验证要求完成验证。'; }
+      return '请按 Telegram 提供的方式获取验证码。';
+    }
     if (phase === 'password') { return '你的账号启用了两步验证，请输入 Telegram 云密码。'; }
     if (phase === 'email') { return 'Telegram 需要验证你的邮箱，请输入可以接收验证码的邮箱地址。'; }
     if (phase === 'emailCode') { return '请输入 Telegram 发送到你的邮箱的验证码。'; }
@@ -1180,7 +1250,7 @@ struct Index {
     if (phase === 'storageRecovery') { return '使用新的本地存储连接账号，原有缓存将保留。'; }
     if (phase === 'unsupported') { return '请根据下方 Telegram 返回的信息完成操作。'; }
     if (this.telegram.ready) { return '会话和消息来自你的 Telegram 账号。发送的消息会送达真实联系人。'; }
-    return this.showDeveloperConfig ? '可选：使用你自己的 Telegram 应用身份进行调试。' : '使用你的手机号码，登录已有的 Telegram 账号。';
+    return this.showDeveloperConfig ? '可选：使用你自己的 Telegram 应用身份进行调试。' : '使用你的手机号码登录或创建 Telegram 账号。';
   }
 
   private preview(): void {
@@ -1458,6 +1528,21 @@ struct Index {
               .onClick(() => this.enterAccount())
           }
         }.width('100%').padding(16).backgroundColor(this.surface()).borderRadius(16)
+        if (this.isTelegram) {
+          Column() {
+            this.settingRow($r('app.media.hg_group'), '账户管理', '', () => {
+              this.accountProfiles = telegramService.accounts();
+              this.activeAccountId = telegramService.activeAccount();
+              this.page = 'accounts';
+            })
+          }.width('100%').backgroundColor(this.surface()).borderRadius(17).margin({ top: 16 })
+        }
+        if (this.isTelegram) {
+          this.sectionLabel('数据与存储')
+          Column() {
+            this.settingRow($r('app.media.hg_globe_blue'), '存储管理', '', () => { this.storageRoute = 'storage'; this.page = 'storage'; })
+          }.width('100%').backgroundColor(this.surface()).borderRadius(17)
+        }
         this.sectionLabel('个性化')
         Column() {
           Row({ space: 13 }) {
@@ -1490,6 +1575,43 @@ struct Index {
   }
 
   @Builder
+  private accountRow(account: AccountProfile) {
+    Row({ space: 14 }) {
+      this.avatar(account.avatar || account.name.slice(0, 1), account.color || '#78A5D8', 44, false, account.avatarPath || '')
+      Text(account.name).fontSize(16).fontColor(this.ink()).layoutWeight(1)
+        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      if (account.id === this.activeAccountId) {
+        if (this.accountSwitching || !this.telegram.ready) { LoadingProgress().width(22).height(22).color('#268BDE') }
+        else { this.icon($r('app.media.hg_check_blue'), 22) }
+      }
+    }.width('100%').height(76).padding({ left: 16, right: 16 })
+      .onClick(() => this.changeAccount(account.id)).enabled(!this.accountSwitching)
+      .accessibilityText(`${account.name}${account.id === this.activeAccountId ? '，当前账户' : ''}`)
+  }
+
+  @Builder
+  private accountManagementPage() {
+    Column() {
+      this.pageHeader('账户管理')
+      Scroll() {
+        Column({ space: 16 }) {
+          Column() {
+            ForEach(this.accountProfiles, (account: AccountProfile) => {
+              this.accountRow(account)
+            }, (account: AccountProfile) => account.id)
+          }.width('100%').backgroundColor(this.surface()).borderRadius(17)
+          Column() {
+            this.settingRow($r('app.media.hg_edit_blue'), '添加账户', '', () => this.changeAccount())
+          }.width('100%').backgroundColor(this.surface()).borderRadius(17).enabled(!this.accountSwitching)
+          if (this.telegram.error.length > 0) {
+            Text(this.telegram.error).fontSize(13).fontColor('#D56464').width('100%')
+          }
+        }.width('100%').padding(16)
+      }.width('100%').layoutWeight(1).scrollBar(BarState.Off).align(Alignment.TopStart)
+    }.width('100%').height('100%').backgroundColor(this.pageBackground())
+  }
+
+  @Builder
   private chatHeader() {
     Row({ space: 9 }) {
       if (!this.isWide()) {
@@ -1509,7 +1631,7 @@ struct Index {
       Button({ type: ButtonType.Circle }) { this.icon($r('app.media.hg_more'), 23) }
         .width(40).height(40).backgroundColor(Color.Transparent)
         .onClick(() => this.menuVisible = !this.menuVisible).accessibilityText('会话操作')
-    }.width('100%').height(64).padding({ left: this.isWide() ? 18 : 8, right: 15 }).backgroundColor(this.surface())
+    }.width('100%').height(56).padding({ left: this.isWide() ? 18 : 8, right: 15 }).backgroundColor(this.surface())
     if (this.menuVisible) {
       Row({ space: 10 }) {
         Button(this.activeChat.pinned ? '取消置顶' : '置顶会话').fontSize(13).fontColor('#268BDE')
@@ -1561,17 +1683,198 @@ struct Index {
     }
   }
 
+  private selectedAttachments(): MediaAttachment[] {
+    return this.photoDrafts.find((item: PhotoDraft) => item.chatId === this.activeChat.id)?.attachments || [];
+  }
+  private removeAttachment(path: string): void {
+    const items = this.selectedAttachments().filter((item: MediaAttachment) => item.path !== path);
+    this.setPhotoDraft(this.activeChat.id, items[0]?.path || '', this.selectedPhotoCaption(), items);
+  }
+  private viewerItems(): ChatMessage[] {
+    const result: ChatMessage[] = [];
+    this.messages.forEach((item: ChatMessage) => {
+      if (item.status === 'failed') { return; }
+      if (item.mediaKind) { result.push(item); }
+      item.richBlocks?.forEach((block: RichContentBlock) => { if (block.media) { result.push(block.media); } });
+    });
+    return result;
+  }
+  private downloadViewerItem(item: ChatMessage, cancel: boolean = false): void {
+    if (item.sourceMessageId && item.mediaFileId) {
+      telegramService.downloadRichMedia(item.chatId, item.sourceMessageId, item.mediaFileId, cancel);
+    } else if (cancel) { telegramService.cancelMedia(item.chatId, item.id); }
+    else { telegramService.downloadMedia(item.chatId, item.id); }
+  }
   private tapMessage(message: ChatMessage): void {
     if (message.status === 'failed') { this.restoreFailedMessage(message); return; }
-    if (message.mediaKind === 'photo' && message.mediaPath) {
-      this.photoViewerPath = message.mediaPath;
+    if (message.mediaKind) {
+      this.mediaViewerId = message.id;
       this.photoViewerVisible = true;
+      if (message.mediaKind !== 'video' && !message.mediaPath && !message.mediaDownloading) { this.downloadViewerItem(message); }
+    }
+  }
+  @Builder
+  private fullScreenPhoto() {
+    MediaViewer({ items: this.viewerItems(), initialId: this.mediaViewerId,
+      onClose: () => { this.photoViewerVisible = false; },
+      onSave: (item: ChatMessage) => {
+        if (!item.mediaPath) { return; }
+        const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+        AttachmentService.saveMedia(context, item.mediaPath, item.mediaKind === 'video').then((saved: boolean) => {
+          if (saved) { this.toast('已保存到相册'); }
+        }).catch(() => this.toast('未能保存到相册，请重试'));
+      },
+      onDownload: (item: ChatMessage) => this.downloadViewerItem(item),
+      onCancel: (item: ChatMessage) => this.downloadViewerItem(item, true) })
+  }
+
+  private messageMetadata(message: ChatMessage): string {
+    const edited = message.editDate ? '已编辑 ' : '';
+    const state = !message.outgoing ? '' : message.status === 'failed' ? ' !' : message.status === 'pending' ? ' ◷' :
+      message.status === 'local' ? ' 本地' : message.read ? ' ✓✓' : ' ✓';
+    return edited + message.time + state;
+  }
+  private hasMessageHeader(message: ChatMessage, index: number): boolean {
+    return !!message.forwardName || !!message.replyPreview ||
+      (!this.groupPrevious(index) && this.activeChat.kind === 'group' && !message.outgoing && !!message.senderName);
+  }
+  private groupPrevious(index: number): boolean { return messagesGrouped(this.messages[index - 1], this.messages[index]); }
+  private groupNext(index: number, count: number = 1): boolean { return messagesGrouped(this.messages[index + count - 1], this.messages[index + count]); }
+  private albumFrames(items: ChatMessage[]): MediaFrame[] { return albumLayout(items, this.messageMediaWidth()).frames; }
+  private singleWidth(message: ChatMessage): number { return singleMediaSize(message, this.messageMediaWidth()).width; }
+  private singleHeight(message: ChatMessage): number { return singleMediaSize(message, this.messageMediaWidth()).height; }
+  private messageBubbleColor(message: ChatMessage): string {
+    return message.outgoing ? (this.darkMode ? '#244765' : '#DAEDFF') : this.surface();
+  }
+  private openMessageLink(url: string): void {
+    const link = safeMessageLink(url);
+    if (!link) { return; }
+    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+    context.openLink(link).catch(() => this.toast('无法打开此链接'));
+  }
+
+  @Builder
+  private senderAvatar(message: ChatMessage, show: boolean) {
+    if (this.activeChat.kind === 'group' && !message.outgoing) {
+      if (show) {
+        UserAvatar({ text: (message.senderName || '').slice(0, 1), color: message.senderColor || '#268BDE',
+          avatarSize: 30, imagePath: message.senderAvatarPath || '' })
+      } else { Blank().width(30).height(1) }
     }
   }
 
   @Builder
-  private fullScreenPhoto() {
-    PhotoViewer({ imagePath: this.photoViewerPath, onClose: () => { this.photoViewerVisible = false; } })
+  private messageHeader(message: ChatMessage, showSender: boolean) {
+    if (showSender && this.activeChat.kind === 'group' && !message.outgoing && message.senderName) {
+      Text(message.senderName).fontSize(13).fontWeight(FontWeight.Medium)
+        .fontColor(message.senderColor || '#268BDE').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        .constraintSize({ maxWidth: this.messageMaxWidth() - 16 }).margin({ bottom: 3 })
+    }
+    if (message.forwardName) {
+      Text('转发自 ' + message.forwardName).fontSize(12).fontColor('#268BDE').fontWeight(FontWeight.Medium)
+        .maxLines(2).constraintSize({ maxWidth: this.messageMaxWidth() - 16 }).margin({ bottom: 4 })
+    }
+    if (message.replyPreview) {
+      Row({ space: 6 }) {
+        if (message.replyThumbnailPath) {
+          Image(this.mediaSource(message.replyThumbnailPath)).width(34).height(34).objectFit(ImageFit.Cover).borderRadius(3)
+        }
+        Column({ space: 2 }) {
+          Text(message.replySenderName || '回复消息').fontSize(12).fontColor('#268BDE').fontWeight(FontWeight.Medium)
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(message.replyPreview).fontSize(13).fontColor(this.ink()).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+        }.alignItems(HorizontalAlign.Start).constraintSize({ maxWidth: this.messageMaxWidth() - (message.replyThumbnailPath ? 70 : 32) })
+      }.alignItems(VerticalAlign.Center).padding({ left: 8, right: 8, top: 5, bottom: 5 })
+        .backgroundColor(this.darkMode ? '#294359' : '#DFEAF3').borderRadius(5)
+        .border({ width: { left: 3 }, color: '#268BDE' }).constraintSize({ maxWidth: this.messageMaxWidth() - 16 })
+        .margin({ bottom: 5 }).onClick(() => this.locateReply(message)).accessibilityText('查看回复的原消息')
+    }
+  }
+
+  @Builder
+  private messageLinkPreview(message: ChatMessage) {
+    if (message.linkPreview) {
+      Column({ space: 3 }) {
+        if (message.linkPreview?.siteName) {
+          Text(message.linkPreview?.siteName || '').fontSize(12).fontColor('#268BDE').fontWeight(FontWeight.Medium)
+        }
+        if (message.linkPreview?.title) {
+          Text(message.linkPreview?.title || '').fontSize(14).fontColor(this.ink()).fontWeight(FontWeight.Medium).maxLines(3)
+        }
+        if (message.linkPreview?.description) {
+          Text(message.linkPreview?.description || '').fontSize(13).fontColor(this.ink()).maxLines(6)
+            .textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(18)
+        }
+      }.alignItems(HorizontalAlign.Start).padding({ left: 8, right: 5, top: 6, bottom: 6 })
+        .backgroundColor(this.darkMode ? '#253B50' : '#CFE4F4').borderRadius(5)
+        .border({ width: { left: 3 }, color: '#268BDE' }).constraintSize({ maxWidth: this.messageMaxWidth() - 16 })
+        .margin({ top: 4 }).onClick(() => this.openMessageLink(message.linkPreview?.url || ''))
+    }
+  }
+
+  @Builder
+  private mediaTile(message: ChatMessage, width: number, height: number) {
+    Stack({ alignContent: Alignment.Center }) {
+      if (message.mediaPath && message.mediaKind === 'photo') {
+        Image(this.mediaSource(message.mediaPath)).width(width).height(height).objectFit(ImageFit.Cover).draggable(false)
+      } else if (message.thumbnailPath) {
+        Image(this.mediaSource(message.thumbnailPath)).width(width).height(height).objectFit(ImageFit.Cover).draggable(false)
+      }
+      if (message.mediaKind === 'video' && !message.mediaDownloading) {
+        Row() {
+          Text(mediaTime(message.mediaDuration || 0)).fontSize(11).fontColor(Color.White)
+            .padding({ left: 6, right: 6, top: 2, bottom: 2 }).backgroundColor('#99000000').borderRadius(12)
+        }.width('100%').height('100%').alignItems(VerticalAlign.Top).padding(6)
+      }
+      if (message.mediaKind === 'video' || !message.mediaPath) {
+        Column({ space: 4 }) {
+          if (message.mediaDownloading) { Text(`${message.mediaProgress || 0}%`).fontSize(14).fontColor(Color.White) }
+          else { SymbolGlyph(message.mediaKind === 'video' ? $r('sys.symbol.play_fill') : $r('sys.symbol.arrow_down'))
+            .fontSize(22).fontColor([Color.White]) }
+          if (message.mediaError) { Text('重试').fontSize(11).fontColor(Color.White) }
+        }.padding(12).backgroundColor('#77000000').borderRadius(28)
+      }
+    }.width(width).height(height).backgroundColor(this.darkMode ? '#233443' : '#B8CAD8').clip(true)
+      .onClick(() => this.tapMessage(message)).id('message-media-' + message.id)
+  }
+
+  @Builder
+  private albumBubble(items: ChatMessage[], index: number) {
+    Row({ space: 6 }) {
+      this.senderAvatar(items[0], !this.groupNext(index, items.length))
+      Column() {
+        if (this.hasMessageHeader(items[0], index)) {
+          Column() { this.messageHeader(items[0], !this.groupPrevious(index)) }
+            .alignItems(HorizontalAlign.Start).padding({ left: 8, right: 8, top: 4 })
+        }
+        Stack({ alignContent: Alignment.TopStart }) {
+          ForEach(this.albumFrames(items), (frame: MediaFrame) => {
+            Column() { this.mediaTile(items[frame.index], frame.width, frame.height) }
+              .position({ x: frame.x, y: frame.y }).id(this.messageNodeId(items[frame.index].chatId, items[frame.index].id))
+              .bindContextMenu(this.messageActionMenu(items[frame.index]), ResponseType.LongPress, {
+                aboutToAppear: () => this.prepareMessageMenu(items[frame.index]),
+                onDisappear: () => { this.messageMenuOpen = false; this.focusAfterMessageMenu(); } })
+              .onVisibleAreaChange([0.5], (visible: boolean, ratio: number) => {
+                if (visible && ratio >= 0.5 && this.isTelegram && this.page === 'chat' && items[0].chatId === this.activeChat.id) {
+                  telegramService.viewVisibleMessages(items[frame.index].chatId, [items[frame.index].id]);
+                }
+              })
+          }, (frame: MediaFrame) => this.messageRenderKey(items[frame.index]))
+          if (!items.some((item: ChatMessage) => this.messageCaption(item).length > 0)) {
+            Text(this.messageMetadata(items[items.length - 1])).fontSize(11).fontColor(Color.White)
+              .padding({ left: 6, right: 6, top: 2, bottom: 2 }).backgroundColor('#77000000').borderRadius(10)
+              .position({ x: this.messageMediaWidth() - 92, y: albumLayout(items, this.messageMediaWidth()).height - 25 })
+          }
+        }.width(this.messageMediaWidth()).height(albumLayout(items, this.messageMediaWidth()).height)
+        ForEach(items.filter((item: ChatMessage) => this.messageCaption(item).length > 0), (item: ChatMessage, captionIndex: number) => {
+          MessageText({ text: this.messageCaption(item), entities: item.entities || [], foreground: this.ink(), secondary: this.mutedInk(),
+            rightMetadata: true, metadata: captionIndex === items.filter((candidate: ChatMessage) => this.messageCaption(candidate).length > 0).length - 1 ?
+              this.messageMetadata(items[items.length - 1]) : '', maxWidth: this.messageMediaWidth() - 16, dark: this.darkMode })
+            .padding({ left: 8, right: 8, top: 5, bottom: 5 }).alignSelf(ItemAlign.Start)
+        }, (item: ChatMessage) => this.messageRenderKey(item))
+      }.width(this.messageMediaWidth()).backgroundColor(this.messageBubbleColor(items[0])).borderRadius(12).clip(true)
+    }.width('100%').alignItems(VerticalAlign.Bottom).justifyContent(items[0].outgoing ? FlexAlign.End : FlexAlign.Start)
+      .margin({ bottom: this.groupNext(index, items.length) ? 3 : 9 })
   }
 
   @Builder
@@ -1582,74 +1885,113 @@ struct Index {
   }
 
   @Builder
-  private messageBubble(message: ChatMessage) {
-    Row() {
-      Column({ space: 8 }) {
-        if (this.activeChat.kind === 'group' && !message.outgoing && message.senderName) {
-          Text(message.senderName).fontSize(13).fontWeight(FontWeight.Medium)
-            .fontColor(message.senderColor || '#268BDE').maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .constraintSize({ maxWidth: this.messageMaxWidth() - 26 })
-        }
-        if (message.replyPreview) {
-          Row({ space: 8 }) {
-            Text('').width(3).height(34).backgroundColor('#268BDE').borderRadius(2)
-            Column({ space: 3 }) {
-              Text(message.replySenderName || '回复消息').fontSize(11).fontColor('#268BDE').fontWeight(FontWeight.Medium)
-                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-              Text(message.replyPreview).fontSize(12).fontColor(this.mutedInk()).maxLines(2)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-            }.alignItems(HorizontalAlign.Start).constraintSize({ maxWidth: this.messageMaxWidth() - 48 })
-          }.constraintSize({ maxWidth: this.messageMaxWidth() - 26 })
-            .onClick(() => this.locateReply(message)).accessibilityText('查看回复的原消息')
-        }
-        if (message.mediaKind === 'photo') {
-          if (message.mediaPath && message.mediaPath.length > 0) {
-            Image(this.mediaSource(message.mediaPath)).width(this.messageMediaWidth()).height(210).objectFit(ImageFit.Contain)
-              .borderRadius(12).backgroundColor(this.pageBackground()).draggable(false)
-          } else {
-            Text('图片').fontSize(14).fontColor(this.mutedInk()).width(this.messageMediaWidth()).height(210)
-              .textAlign(TextAlign.Center).backgroundColor(this.pageBackground()).borderRadius(12)
+  private messageBubble(message: ChatMessage, index: number) {
+    if (message.service) {
+      Row() {
+        Text(message.text).fontSize(12).fontColor(this.mutedInk()).textAlign(TextAlign.Center)
+          .padding({ left: 10, right: 10, top: 4, bottom: 4 }).backgroundColor(this.darkMode ? '#263746' : '#DDE7F0').borderRadius(12)
+          .constraintSize({ maxWidth: this.messageMaxWidth() })
+      }.width('100%').justifyContent(FlexAlign.Center).margin({ top: 6, bottom: 9 }).id(this.messageNodeId(message.chatId, message.id))
+    } else {
+      Row({ space: 6 }) {
+        this.senderAvatar(message, !this.groupNext(index))
+        Column() {
+          if (this.hasMessageHeader(message, index)) {
+            Column() { this.messageHeader(message, !this.groupPrevious(index)) }
+              .alignItems(HorizontalAlign.Start).padding({ left: 8, right: 8, top: 4 })
+          } else if (!message.mediaKind) { Row().height(4) }
+          if (message.mediaKind) {
+            Stack({ alignContent: Alignment.BottomEnd }) {
+              this.mediaTile(message, this.singleWidth(message), this.singleHeight(message))
+              if (this.messageCaption(message).length === 0) {
+                Text(this.messageMetadata(message)).fontSize(11).fontColor(Color.White)
+                  .padding({ left: 6, right: 6, top: 2, bottom: 2 }).backgroundColor('#77000000').borderRadius(10).margin(5)
+              }
+            }.width(this.singleWidth(message)).height(this.singleHeight(message))
           }
-        }
-        if (this.messageCaption(message).length > 0) {
-          Text(this.messageCaption(message)).fontSize(15).fontColor(this.ink()).lineHeight(23)
-            .constraintSize({ maxWidth: this.messageMaxWidth() - 26 })
-            .copyOption(CopyOptions.None)
-        }
-        Row({ space: 5 }) {
-          if (message.editDate && message.editDate > 0) { Text('已编辑').fontSize(10).fontColor(this.mutedInk()) }
-          Text(message.time).fontSize(10).fontColor(this.mutedInk())
-          if (message.outgoing) {
-            if (message.status === 'failed') {
-              Text('发送失败 · 点击编辑').fontSize(10).fontColor('#D56464')
-            } else if (message.status === 'pending') {
-              LoadingProgress().width(12).height(12).color('#6C9BC6')
-            } else {
-              if (message.status === 'local') { Text('本地').fontSize(9).fontColor('#6C9BC6') }
-              this.icon($r('app.media.hg_check_blue'), 11)
-            }
+          if (message.richBlocks) {
+            Column({ space: 6 }) {
+              ForEach(message.richBlocks, (block: RichContentBlock, blockIndex: number) => {
+                if (block.media) {
+                  Stack({ alignContent: Alignment.BottomEnd }) {
+                    this.mediaTile(block.media, Math.min(this.singleWidth(block.media), this.messageMaxWidth() - 16),
+                      this.singleHeight(block.media) * Math.min(this.singleWidth(block.media), this.messageMaxWidth() - 16) / this.singleWidth(block.media))
+                    if (!block.text && blockIndex === (message.richBlocks?.length || 0) - 1) {
+                      Text(this.messageMetadata(message)).fontSize(11).fontColor(Color.White)
+                        .padding({ left: 6, right: 6, top: 2, bottom: 2 }).backgroundColor('#77000000').borderRadius(10).margin(5)
+                    }
+                  }
+                  if (block.text) {
+                    MessageText({ text: block.text, entities: block.entities, foreground: this.ink(), secondary: this.mutedInk(),
+                    textSize: block.kind === 'heading' ? block.level === 1 ? 18 : block.level === 2 ? 16 : 15 : 15,
+                      metadata: blockIndex === (message.richBlocks?.length || 0) - 1 ? this.messageMetadata(message) : '',
+                      maxWidth: this.messageMaxWidth() - 16, dark: this.darkMode })
+                  }
+                } else if (block.kind === 'divider') {
+                  Divider().color(this.line()).width(this.messageMaxWidth() - 16)
+                } else {
+                  MessageText({ text: block.text, entities: block.entities, foreground: this.ink(), secondary: this.mutedInk(),
+                    textSize: block.kind === 'heading' ? block.level === 1 ? 18 : block.level === 2 ? 16 : 15 : 15,
+                    metadata: blockIndex === (message.richBlocks?.length || 0) - 1 ? this.messageMetadata(message) : '',
+                    maxWidth: this.messageMaxWidth() - 16, dark: this.darkMode })
+                }
+              })
+              if (message.richTruncated) {
+                Button(message.richLoading ? '正在加载…' : message.richError ? '重试加载全文' : '展开全文')
+                  .fontSize(13).fontColor('#268BDE').backgroundColor(Color.Transparent).height(36)
+                  .enabled(!message.richLoading).onClick(() => telegramService.loadFullRichMessage(message.chatId, message.id))
+              }
+            }.padding({ left: 8, right: 8, bottom: 5 }).alignItems(HorizontalAlign.Start)
+          } else if (message.contactName) {
+            Row({ space: 10 }) {
+              UserAvatar({ text: message.contactName.slice(0, 1), color: '#5A9BD5', avatarSize: 40 })
+              Column({ space: 3 }) {
+                Text(message.contactName).fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.ink())
+                Text(message.contactPhone || '').fontSize(13).fontColor('#268BDE')
+                Text(this.messageMetadata(message)).fontSize(11).fontColor(this.mutedInk())
+              }.alignItems(HorizontalAlign.Start)
+            }.padding({ left: 8, right: 8, top: 2, bottom: 7 })
+          } else if (message.sticker) {
+            Stack({ alignContent: Alignment.BottomEnd }) {
+              if (message.stickerPath) {
+                Image(this.mediaSource(message.stickerPath)).width(180).height(180).objectFit(ImageFit.Contain).draggable(false)
+              } else { Text(message.stickerEmoji || '贴纸').fontSize(64).width(180).height(180).textAlign(TextAlign.Center) }
+              Text(this.messageMetadata(message)).fontSize(11).fontColor(this.mutedInk()).padding(4)
+            }.width(180).height(200)
+          } else if (message.largeEmoji) {
+            Row({ space: 8 }) {
+              Text(message.text).fontSize(52)
+              Text(this.messageMetadata(message)).fontSize(11).fontColor(this.mutedInk()).alignSelf(ItemAlign.End)
+            }.padding(5)
+          } else if (this.messageCaption(message).length > 0) {
+            MessageText({ text: this.messageCaption(message), entities: message.entities || [], foreground: this.ink(),
+              secondary: message.status === 'failed' ? '#D56464' : this.mutedInk(),
+              rightMetadata: !!message.mediaKind, metadata: message.linkPreview ? '' : this.messageMetadata(message),
+              maxWidth: message.mediaKind ? this.singleWidth(message) - 16 : this.messageMaxWidth() - 16, dark: this.darkMode })
+              .id('message-body-' + (message.contentType || 'text'))
+              .padding({ left: 8, right: 8, top: message.mediaKind ? 5 : 0, bottom: 5 }).alignSelf(ItemAlign.Start)
           }
-        }.height(14).alignSelf(ItemAlign.End)
-      }.padding({ left: 14, right: 12, top: 12, bottom: 9 })
-        .constraintSize({ maxWidth: this.messageMaxWidth(), minWidth: 70 })
-        .alignItems(HorizontalAlign.Start)
-        .backgroundColor(message.outgoing ? (this.darkMode ? '#244765' : '#DAEDFF') : this.surface())
-        .borderRadius({ topLeft: 17, topRight: 17, bottomLeft: message.outgoing ? 17 : 5, bottomRight: message.outgoing ? 5 : 17 })
-        .onClick(() => this.tapMessage(message))
-        .bindContextMenu(this.messageActionMenu(message), ResponseType.LongPress,
-          { aboutToAppear: () => this.prepareMessageMenu(message), onDisappear: () => {
-            this.messageMenuOpen = false;
-            this.focusAfterMessageMenu();
-          } })
-    }.width('100%').justifyContent(message.outgoing ? FlexAlign.End : FlexAlign.Start)
-      .id(this.messageNodeId(message.chatId, message.id))
-      .margin({ bottom: 13 })
-      .onVisibleAreaChange([0, 0.5], (visible: boolean, ratio: number) => {
-        if (visible && ratio >= 0.5 && this.isTelegram && this.page === 'chat' && this.activeChat.id === message.chatId) {
-          telegramService.viewVisibleMessages(message.chatId, [message.id]);
-        }
-      })
+          this.messageLinkPreview(message)
+          if (message.linkPreview) {
+            Text(this.messageMetadata(message)).fontSize(11).fontColor(this.mutedInk()).alignSelf(ItemAlign.End).padding({ right: 8, bottom: 4 })
+          }
+        }.constraintSize({ maxWidth: this.messageMaxWidth(), minWidth: 45 })
+          .alignItems(HorizontalAlign.Start).backgroundColor(message.sticker || message.largeEmoji ? Color.Transparent : this.messageBubbleColor(message))
+          .borderRadius({ topLeft: 13, topRight: 13, bottomLeft: !message.outgoing && !this.groupNext(index) ? 4 : 13,
+            bottomRight: message.outgoing && !this.groupNext(index) ? 4 : 13 }).clip(true)
+          .onClick(() => { if (message.status === 'failed' && !message.mediaKind) { this.restoreFailedMessage(message); } })
+          .bindContextMenu(this.messageActionMenu(message), ResponseType.LongPress,
+            { aboutToAppear: () => this.prepareMessageMenu(message), onDisappear: () => {
+              this.messageMenuOpen = false; this.focusAfterMessageMenu();
+            } })
+      }.width('100%').alignItems(VerticalAlign.Bottom).justifyContent(message.outgoing ? FlexAlign.End : FlexAlign.Start)
+        .id(this.messageNodeId(message.chatId, message.id)).margin({ bottom: this.groupNext(index) ? 3 : 9 })
+        .onVisibleAreaChange([0, 0.5], (visible: boolean, ratio: number) => {
+          if (visible && ratio >= 0.5 && this.isTelegram && this.page === 'chat' && this.activeChat.id === message.chatId) {
+            telegramService.viewVisibleMessages(message.chatId, [message.id]);
+          }
+        })
+    }
   }
 
   @Builder
@@ -1671,21 +2013,30 @@ struct Index {
           }
         }
         if (!this.currentComposerAction() && this.hasSelectedPhoto()) {
-          Stack({ alignContent: Alignment.TopEnd }) {
-            Image(this.mediaSource(this.selectedPhotoPath())).width('100%').height(140).objectFit(ImageFit.Contain)
-              .backgroundColor(this.pageBackground()).borderRadius(12)
-            Button('取消').fontSize(12).fontColor('#FFFFFF').height(30).backgroundColor('#99000000')
-              .margin(8).onClick(() => this.setPhotoDraft(this.activeChat.id, '', ''))
-              .accessibilityText('取消发送所选图片')
-          }.width('100%')
+          Scroll() {
+            Row({ space: 8 }) {
+              ForEach(this.selectedAttachments(), (item: MediaAttachment) => {
+                Stack({ alignContent: Alignment.TopEnd }) {
+                  if (item.kind === 'photo') {
+                    Image(this.mediaSource(item.path)).width(110).height(100).objectFit(ImageFit.Cover).borderRadius(8)
+                  } else {
+                    Text(`▶ ${mediaTime(item.duration)}`).width(110).height(100).textAlign(TextAlign.Center)
+                      .fontColor(this.ink()).backgroundColor(this.pageBackground()).borderRadius(8)
+                  }
+                  Button('×').width(28).height(28).fontSize(18).backgroundColor('#99000000').fontColor(Color.White)
+                    .onClick(() => this.removeAttachment(item.path)).accessibilityText('移除此附件')
+                }
+              }, (item: MediaAttachment) => item.path)
+            }
+          }.scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off).width('100%').height(104)
         }
         Row({ space: 7 }) {
           Button({ type: ButtonType.Circle }) { this.icon($r('app.media.hg_attach'), 23) }
             .width(37).height(42).backgroundColor(Color.Transparent)
             .enabled(this.isTelegram && !this.choosingImage && !this.currentComposerAction()).onClick(() => this.chooseImage())
-            .accessibilityText('选择图片')
+            .accessibilityText('选择图片或视频')
           TextArea({ text: this.composerText(),
-            placeholder: !this.currentComposerAction() && this.hasSelectedPhoto() ? '添加图片说明…' :
+            placeholder: !this.currentComposerAction() && this.hasSelectedPhoto() ? '添加说明…' :
               (this.isTelegram ? '输入消息…' : '输入本地消息…') })
             .layoutWeight(1).minLines(1).constraintSize({ minHeight: 44, maxHeight: 132 })
             .maxLines(5, { overflowMode: MaxLinesMode.SCROLL }).textOverflow(TextOverflow.Clip)
@@ -1704,7 +2055,7 @@ struct Index {
         if (!this.isTelegram) {
           Text('离线预览 · 消息不会发送').fontSize(10).fontColor(this.mutedInk())
         }
-      }.width('100%').padding({ left: 9, right: 14, top: 10, bottom: 12 }).backgroundColor(this.surface())
+      }.width('100%').padding({ left: 8, right: 10, top: 6, bottom: 6 }).backgroundColor(this.surface())
     }
   }
 
@@ -1747,12 +2098,19 @@ struct Index {
                   .backgroundColor(this.darkMode ? '#263746' : '#DDE7F0').borderRadius(12)
               }.width('100%').justifyContent(FlexAlign.Center).margin({ top: 5, bottom: 14 })
             }
-            this.messageBubble(message)
-          }, (message: ChatMessage, index: number) => `${this.messageRenderKey(message)}:${this.showsMessageDate(index)}`)
-        }.width('100%').padding({ left: 17, right: 17, top: 15, bottom: 10 })
+            if (!message.mediaKind || mediaAlbumAt(this.messages, index).length === 1) {
+              this.messageBubble(message, index)
+            } else if (mediaAlbumAt(this.messages, index).length > 1) {
+              this.albumBubble(mediaAlbumAt(this.messages, index), index)
+            }
+          }, (message: ChatMessage, index: number) => `${this.messageRenderKey(message)}:${this.showsMessageDate(index)}:${this.groupPrevious(index)}:${this.groupNext(index)}:${mediaAlbumAt(this.messages, index).map((item: ChatMessage) => this.messageRenderKey(item)).join(";")}`)
+        }.width('100%').padding({ left: 8, right: 8, top: 8, bottom: 6 })
           .onAreaChange((_oldArea: Area, area: Area) => this.updateMessageContentHeight(Number(area.height)))
       }.width('100%').layoutWeight(1).scrollBar(BarState.Off).id('message-scroll')
-        .onDidScroll(() => { this.wasAtBottom = this.messageScroller.isAtEnd(); })
+        .onDidScroll(() => { if (this.userMessageScrolling) { this.wasAtBottom = this.messageScroller.isAtEnd(); } })
+        .onScrollStop(() => {
+          if (this.userMessageScrolling) { this.wasAtBottom = this.messageScroller.isAtEnd(); this.userMessageScrolling = false; }
+        })
         .onWillScroll((_xOffset: number, yOffset: number, _state: ScrollState, source: ScrollSource) => {
           this.observeHistoryScroll(yOffset, source);
         })
@@ -1775,12 +2133,17 @@ struct Index {
   }
 
   @Builder
+  private brandLogo(size: number, radius: number) {
+    Image($r('app.media.harlgram_icon')).width(size).height(size)
+      .objectFit(ImageFit.Contain).borderRadius(radius).clip(true)
+      .draggable(false).accessibilityText('Harlgram Logo')
+  }
+
+  @Builder
   private welcomePage() {
     Scroll(this.welcomeScroller) {
       Column({ space: 24 }) {
-        Stack() { this.icon($r('app.media.hg_send_white'), 52) }
-          .width(104).height(104).backgroundColor('#268BDE').borderRadius(34)
-          .margin({ top: 48, bottom: 4 })
+        Column() { this.brandLogo(104, 30) }.margin({ top: 48, bottom: 4 })
         Text('Harlgram').fontSize(32).fontWeight(FontWeight.Medium).fontColor(this.ink())
           .margin({ bottom: 28 })
         Button('开始聊天').fontSize(16).fontWeight(FontWeight.Medium).fontColor('#FFFFFF')
@@ -1901,12 +2264,22 @@ struct Index {
   private accountPage() {
     Column() {
       this.pageHeader('Telegram 账号')
+      if (this.accountProfiles.some((item: AccountProfile) => item.id !== this.activeAccountId)) {
+        Row({ space: 8 }) {
+          ForEach(this.accountProfiles.filter((item: AccountProfile) => item.id !== this.activeAccountId), (account: AccountProfile) => {
+            Button({ type: ButtonType.Normal }) {
+              Row({ space: 8 }) {
+                this.avatar(account.avatar || account.name.slice(0, 1), account.color || '#78A5D8', 30, false, account.avatarPath || '')
+                Text(account.name).fontSize(13).fontColor(this.ink()).maxLines(1)
+              }.padding({ left: 10, right: 10 })
+            }.height(46).backgroundColor(this.surface()).borderRadius(23)
+              .onClick(() => this.changeAccount(account.id)).enabled(!this.accountSwitching)
+          }, (account: AccountProfile) => account.id)
+        }.padding(8).width('100%')
+      }
       Scroll() {
         Column({ space: 18 }) {
-          Stack() {
-            if (this.telegram.phase === 'password') { this.icon($r('app.media.hg_lock_white'), 37) }
-            else { this.icon($r('app.media.hg_send_white'), 40) }
-          }.width(84).height(84).backgroundColor('#268BDE').borderRadius(28).margin({ top: 25, bottom: 8 })
+          Column() { this.brandLogo(84, 24) }.margin({ top: 25, bottom: 8 })
           Text(this.authTitle()).fontSize(26).fontWeight(FontWeight.Bold).fontColor(this.ink()).textAlign(TextAlign.Center)
           Text(this.authHint()).fontSize(13).fontColor(this.mutedInk()).lineHeight(23).textAlign(TextAlign.Center)
             .width('100%').margin({ bottom: 12 })
@@ -1924,6 +2297,21 @@ struct Index {
               this.phoneNumberFields()
             } else if (this.telegram.phase === 'code') {
               this.authField('Telegram 验证码', '输入收到的验证码', this.authCode, InputType.Normal, (value: string) => this.authCode = value)
+            } else if (this.telegram.phase === 'registration') {
+              this.authField('名字', '必填', this.registrationFirst, InputType.Normal, (value: string) => this.registrationFirst = value)
+              this.authField('姓氏', '选填', this.registrationLast, InputType.Normal, (value: string) => this.registrationLast = value)
+              if ((this.telegram.termsText || '').length > 0) {
+                Scroll() { Text(this.telegram.termsText || '').fontSize(13).fontColor(this.ink()).width('100%') }
+                  .width('100%').constraintSize({ maxHeight: 220 })
+              }
+              Hyperlink('https://telegram.org/tos', 'Telegram 服务条款')
+              if ((this.telegram.minAge || 0) > 0) {
+                Text(`最低年龄：${this.telegram.minAge} 岁`).fontSize(12).fontColor(this.mutedInk())
+              }
+              Row({ space: 8 }) {
+                Checkbox().select(this.registrationAccepted).onChange((value: boolean) => this.registrationAccepted = value)
+                Text('我已阅读并同意条款，且符合最低年龄要求').fontSize(12).fontColor(this.ink()).layoutWeight(1)
+              }.width('100%')
             } else if (this.telegram.phase === 'password') {
               this.authField('两步验证密码', '输入你的云密码', this.password, InputType.Password, (value: string) => this.password = value)
             } else if (this.telegram.phase === 'email') {
@@ -1936,6 +2324,14 @@ struct Index {
               Text('应用配置可在 my.telegram.org 的 API development tools 中获取。配置安全保存在此设备，验证码和密码不会持久保存。')
                 .fontSize(11).fontColor(this.mutedInk()).lineHeight(20).width('100%')
             }
+            if (this.telegram.phase === 'code' || this.telegram.phase === 'emailCode') {
+              Button((this.telegram.resendSeconds || 0) > 0 ? `${this.telegram.resendSeconds} 秒后可重发` : '未收到验证码？重新发送')
+                .fontSize(13).backgroundColor(Color.Transparent).fontColor('#268BDE')
+                .enabled(this.telegram.canResend === true).onClick(() => telegramService.resendCode())
+              if (this.telegram.phase === 'code' && !this.telegram.nextDelivery) {
+                Text('Telegram 暂未提供其他发送方式，请确认号码并稍后重试。').fontSize(12).fontColor(this.mutedInk())
+              }
+            }
             if (this.localError.length > 0 || this.telegram.error.length > 0) {
               Text(this.telegram.error.length > 0 ? this.telegram.error : this.localError).fontSize(12).fontColor('#D56464')
                 .lineHeight(21).width('100%').padding(15)
@@ -1943,7 +2339,7 @@ struct Index {
             }
             if (this.telegram.phase !== 'unsupported' || this.showDeveloperConfig) {
               Button(this.authSubmitting ? '正在处理…' : (this.telegram.phase === 'storageRecovery' ? '重新登录' :
-                (this.telegram.phase === 'password' ? '验证并登录' : '继续')))
+                (this.telegram.phase === 'registration' ? '同意并创建账号' : (this.telegram.phase === 'password' ? '验证并登录' : '继续'))))
                 .fontSize(15).fontWeight(FontWeight.Medium).fontColor('#FFFFFF')
                 .height(50).width('100%').backgroundColor('#268BDE').borderRadius(15)
                 .enabled(!this.authSubmitting).onClick(() => this.startLogin())
@@ -1954,6 +2350,10 @@ struct Index {
             Button(this.showDeveloperConfig ? '收起开发者配置' : '开发者配置（可选）').fontSize(12).fontColor('#268BDE')
               .height(36).backgroundColor(Color.Transparent)
               .onClick(() => { this.showDeveloperConfig = !this.showDeveloperConfig; this.localError = ''; })
+          }
+          if (this.telegram.phase === 'code' || this.telegram.phase === 'emailCode' || this.telegram.phase === 'registration' || this.telegram.phase === 'password') {
+            Button('更换手机号').fontSize(13).backgroundColor(Color.Transparent).fontColor('#268BDE')
+              .enabled(!this.authSubmitting).onClick(() => telegramService.editPhone())
           }
           Blank().height(24)
         }.width('100%').constraintSize({ maxWidth: 480 }).padding({ left: 26, right: 26 })
@@ -1967,8 +2367,7 @@ struct Index {
       this.pageHeader('关于 Harlgram')
       Scroll() {
         Column({ space: 20 }) {
-          Stack() { this.icon($r('app.media.hg_send_white'), 41) }
-            .width(86).height(86).backgroundColor('#268BDE').borderRadius(28).margin({ top: 28 })
+          Column() { this.brandLogo(86, 24) }.margin({ top: 28 })
           Text('Harlgram').fontSize(28).fontWeight(FontWeight.Medium).fontColor(this.ink())
           Text('版本 1.0.0').fontSize(12).fontColor(this.mutedInk())
           Text('基于 Telegram 服务的 HarmonyOS 原生客户端。第三方独立项目，与 Telegram 官方无隶属关系。')
@@ -2043,6 +2442,11 @@ struct Index {
         this.welcomePage()
       } else if (this.page === 'account') {
         this.accountPage()
+      } else if (this.page === 'accounts') {
+        this.accountManagementPage()
+      } else if (this.page === 'storage') {
+        StoragePage({ manager: telegramService.storageManager, route: this.$storageRoute, dark: this.darkMode,
+          onClose: () => { this.page = 'home'; this.currentTab = 2; } })
       } else if (this.page === 'about') {
         this.aboutPage()
       } else {

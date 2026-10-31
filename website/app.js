@@ -1,9 +1,9 @@
 /* Progressive enhancement only: the complete Chinese page works without JavaScript. */
 const english = {
   'skip': 'Skip to content', 'navigation': 'Main navigation',
-  'nav.features': 'Features', 'nav.progress': 'Progress', 'nav.develop': 'Build',
+  'nav.home': 'Overview', 'nav.features': 'Features', 'nav.roadmap': 'Roadmap', 'nav.changelog': 'Changelog',
   'hero.title1': 'Telegram.', 'hero.title2': 'Native to HarmonyOS.',
-  'hero.description': 'An independent Telegram client built for HarmonyOS NEXT. Familiar conversations in native ArkUI, connected to Telegram through TDLib.',
+  'hero.description': 'An open-source native third-party Telegram client for HarmonyOS NEXT. Familiar conversations in ArkUI, connected to Telegram through TDLib.',
   'hero.source': 'View source', 'hero.build': 'Build it yourself',
   'hero.note': 'In active development · Phone experience first',
   'hero.screenshot': 'Harlgram single-column device capture, privacy-redacted and composited into an illustrative Pura X Max frame',
@@ -21,7 +21,7 @@ const english = {
   'feature.messages.text': 'Send and receive text, reply, edit, forward a message, or delete it. Native context menus follow server-provided permissions.',
   'feature.messages.detail': 'Pending, sent, and failed stay distinct',
   'feature.photos.title': 'A closer look',
-  'feature.photos.text': 'Pick a photo with the system picker, preview before sending, exchange single images, and open them full-screen to zoom and pan.',
+  'feature.photos.text': 'Pick up to 10 photos/videos, preview and exchange albums. Zoom photos; stream video, seek uncached positions, and use playback-speed gestures.',
   'feature.photos.detail': 'You confirm before a photo is sent',
   'feature.drafts.title': 'Keep your train of thought',
   'feature.drafts.text': 'Text drafts, paginated history, group sender names, and date separators. Replying and editing preserve your ordinary draft.',
@@ -42,8 +42,8 @@ const english = {
   'progress.three.text': 'Server search, folders and archives, full media support, group management, background notifications, and calls—with separate acceptance checks.',
   'limits.badge': 'DEVELOPMENT PREVIEW', 'limits.title': 'Not a complete replacement yet.',
   'limits.search': 'Search covers loaded chats only. Server-wide search is not implemented.',
-  'limits.media': 'Full voice, video, file, sticker, and GIF interactions are not implemented.',
-  'limits.platform': 'Background notifications, calls, multiple accounts, and full group management are on the roadmap.',
+  'limits.media': 'Photos, albums, and video work; full voice, arbitrary file, sticker, and GIF interactions remain incomplete.',
+  'limits.platform': 'Account switching works; inactive-account notifications, background push, calls, and full group management remain on the roadmap.',
   'limits.device': 'Single-column phones come first. Unfolded, tablet, and multi-window layouts have not completed acceptance testing.',
   'limits.link': 'Explore the feature-by-feature gaps',
   'engineering.title': 'Clear boundaries. Shared context.',
@@ -80,19 +80,24 @@ for (const element of translatable) {
 }
 
 let language = 'zh';
-const titles = { zh: 'Harlgram — Telegram，以鸿蒙的方式。', en: 'Harlgram — Telegram. Native to HarmonyOS.' };
+const titles = { zh: 'Harlgram｜鸿蒙 HarmonyOS NEXT 原生 Telegram 客户端', en: 'Harlgram | Native Telegram Client for HarmonyOS NEXT' };
 const descriptions = {
-  zh: 'Harlgram：面向 HarmonyOS NEXT 的开源原生 Telegram 第三方客户端。ArkUI、TDLib，以及可接力的 AI-native 开发工作流。',
-  en: 'Harlgram: an open-source, native third-party Telegram client for HarmonyOS NEXT. Built with ArkUI, TDLib, and an AI-native development workflow.'
+  zh: 'Harlgram 是开源的鸿蒙 HarmonyOS NEXT 原生 Telegram 第三方客户端，基于 ArkUI + TDLib，持续开发中。查看功能进度、界面预览和源码构建指南。',
+  en: 'Harlgram is an open-source native third-party Telegram client for HarmonyOS NEXT, built with ArkUI + TDLib and in active development. Explore features, previews, and source build guides.'
 };
 
 function setLanguage(next) {
   language = next === 'en' ? 'en' : 'zh';
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
-  document.title = titles[language];
-  document.querySelector('meta[name="description"]').content = descriptions[language];
-  document.querySelector('meta[property="og:title"]').content = titles[language];
-  document.querySelector('meta[property="og:description"]').content = descriptions[language];
+  const page = document.body.dataset.page;
+  const labels = { features: { zh: '现有功能', en: 'Features' }, roadmap: { zh: '路线图', en: 'Roadmap' }, changelog: { zh: '更新日志', en: 'Changelog' } };
+  const pageTitle = labels[page] ? `${labels[page][language]} | Harlgram` : titles[language];
+  const pageDescription = labels[page] ? (language === 'zh' ? `Harlgram ${labels[page].zh}：实现范围、验证与后续计划。` : `Harlgram ${labels[page].en}: implementation scope, validation, and plans.`) : descriptions[language];
+  document.title = pageTitle;
+  for (const section of document.querySelectorAll('[data-doc-language]')) section.hidden = section.dataset.docLanguage !== language;
+  document.querySelector('meta[name="description"]').content = pageDescription;
+  document.querySelector('meta[property="og:title"]').content = pageTitle;
+  document.querySelector('meta[property="og:description"]').content = pageDescription;
   for (const element of translatable) {
     const key = element.dataset.i18n ?? element.dataset.i18nAria ?? element.dataset.i18nAlt;
     const value = language === 'en' ? english[key] : chinese.get(key);
@@ -113,6 +118,7 @@ for (const button of document.querySelectorAll('[data-language]')) {
 try { if (localStorage.getItem('harlgram.site.language') === 'en') setLanguage('en'); } catch { /* Chinese is the default. */ }
 
 const copyButton = document.getElementById('copy-command');
+if (copyButton) {
 copyButton.hidden = false;
 copyButton.addEventListener('click', async () => {
   const code = document.getElementById('build-commands');
@@ -133,6 +139,8 @@ copyButton.addEventListener('click', async () => {
     status.textContent = language === 'zh' ? '浏览器未允许复制，命令已选中，可手动复制。' : 'Clipboard access was unavailable. The commands are selected for manual copying.';
   }
 });
+
+}
 
 // Content stays visible if JavaScript or IntersectionObserver is unavailable.
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');

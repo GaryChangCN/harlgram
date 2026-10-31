@@ -22,7 +22,7 @@ class Transport {
 function fixture(ready = true) {
   const transport = new Transport();
   const repository = new ChatRepository();
-  const client = new TelegramClient(transport, repository);
+  const client = new TelegramClient(transport, repository); client.setMediaNetwork('wifi');
   client.start(parameters);
   if (ready) authorize(transport, client, 'Ready');
   return { transport, repository, client };

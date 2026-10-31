@@ -58,9 +58,40 @@ export class ChatRepository {
     this.messages = this.messages.filter((item: ChatMessage): boolean => item.chatId !== chatId || !ids.includes(item.id));
   }
 
+  private mediaMessages(): ChatMessage[] {
+    const result: ChatMessage[] = [];
+    this.messages.forEach((message: ChatMessage) => {
+      result.push(message); message.richBlocks?.forEach((block) => { if (block.media) { result.push(block.media); } });
+    });
+    return result;
+  }
+
   updatePhotoFile(fileId: number, path: string): void {
-    this.messages.forEach((message: ChatMessage): void => {
-      if (message.mediaKind === 'photo' && message.mediaFileId === fileId) { message.mediaPath = path; }
+    this.mediaMessages().forEach((message: ChatMessage): void => {
+      if (message.mediaKind && message.mediaFileId === fileId) { message.mediaPath = path; }
+      if (message.replyThumbnailFileId === fileId) { message.replyThumbnailPath = path; }
+    });
+  }
+
+  updateMediaTransfer(fileId: number, progress: number, downloading: boolean, error: string = ''): void {
+    this.mediaMessages().forEach((message: ChatMessage): void => {
+      if (message.mediaFileId === fileId) {
+        message.mediaProgress = progress; message.mediaDownloading = downloading; message.mediaError = error;
+      }
+    });
+  }
+  updateThumbnailFile(fileId: number, path: string): void {
+    this.mediaMessages().forEach((message: ChatMessage): void => { if (message.thumbnailFileId === fileId) { message.thumbnailPath = path; } });
+  }
+
+  updateSenderAvatar(senderId: string, fileId: number | undefined, path: string): void {
+    this.messages.forEach((item: ChatMessage) => {
+      if (item.senderId === senderId) { item.senderAvatarFileId = fileId; item.senderAvatarPath = path; }
+    });
+  }
+  updateOutboxRead(chatId: string, lastRead: number): void {
+    this.messages.forEach((item: ChatMessage) => {
+      if (item.chatId === chatId && item.outgoing) { item.read = item.status === 'sent' && Number(item.id) <= lastRead; }
     });
   }
 
@@ -71,6 +102,10 @@ export class ChatRepository {
   }
 
   updateAvatarFile(fileId: number, path: string): void {
+    this.messages.forEach((item: ChatMessage) => {
+      if (item.senderAvatarFileId === fileId) { item.senderAvatarPath = path; }
+      if (item.stickerFileId === fileId) { item.stickerPath = path; }
+    });
     this.chats.forEach((chat: ChatSummary): void => { if (chat.avatarFileId === fileId) { chat.avatarPath = path; } });
     this.contacts.forEach((contact: Contact): void => { if (contact.avatarFileId === fileId) { contact.avatarPath = path; } });
   }
